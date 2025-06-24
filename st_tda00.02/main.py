@@ -12,6 +12,7 @@ import ot
 import ast
 from scipy.special import logit
 import pandas as pd
+from scipy.stats import spearmanr
 dir = '/Users/pbeamer/Documents/TDA/st_tda00.02/'
 
     
@@ -447,13 +448,13 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
 #Compute differential expression for a set of multi-scale domains
 def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']):
     for x in input:
-        filename = dir+'libd_'+x
+        filename = 'libd_'+x
         output = x
         cum_wasserstein = []
         for i in range(10):
             clusters_as_weighted = []
             
-            input_file= 'results00.02/embedding/'+filename+'_'+str(i)+'_multiscale'
+            input_file= dir+'results00.02/embedding/'+filename+'_'+str(i)+'_multiscale'
 
             adata = sc.read_h5ad(input_file + '.h5ad')
             res = np.linspace(start=0.15,stop=.95,num=8)
@@ -471,9 +472,44 @@ def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','15
         print(np.argmin(cum_wasserstein))
         output += "\nList Cumulative:"+ str(cum_wasserstein)
         output += "\nBest:" + str(np.argmin(cum_wasserstein))
-        with open('results00.02/embedding/'+x+'_ground_truth-06-23.txt','w') as file:
+        with open(dir+'results00.02/embedding/'+x+'_ground_truth-06-23.txt','w') as file:
             file.write(output)
         
+def plot_single_vs_multiscale(filename):
+    wass_mult = []
+    wass_single = []
+    for f in filename:
+        with open(dir + 'results00.02/embedding/'+f+'-05-23.txt') as file:
+            lines = [line.rstrip() for line in file]
+        for i in range(10):
+            w = lines[3*i+3]
+            w = w.replace(' Wasserstein Costs:','')
+            w = ast.literal_eval(w)
+            print(w)
+            w = list(d[0] for d in w)
+            wass_mult.extend(list((d-np.mean(w))/np.mean(w) for d in w))
+
+        
+        with open(dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
+            lines = [line.rstrip() for line in file]
+        for i in range(10):
+            w = lines[3*i+2]
+            w = w.replace('Costs:','')
+            w = ast.literal_eval(w)
+            w = list(d[0] for d in w)
+            wass_single.extend(list((d-np.mean(w))/np.mean(w) for d in w))
+    r  = spearmanr(wass_mult,wass_single)
+    print(r)
+    plt.figure()
+    plt.scatter(wass_mult,wass_single)
+    plt.plot([-1,3],[-1,3], c='m')
+    plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
+    plt.xlabel('Multiscale Wasserstein')
+    plt.ylabel('Single Scale Wass')
+    plt.show()
+    
+    print(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i])))
+    print(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i])))
 
 def _test_(i):
     file = 'libd_151672_'+str(i)+'_multiscale.h5ad'
@@ -579,4 +615,4 @@ def plot_gt_merfish(bregma):
 #adata = sc.read_h5ad('results00.02/embedding/libd_151673_1_multiscale.h5ad')
 #for res in np.linspace(start=.15,stop=.95,num=8):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
-libd_single_scale_benchmark(['151674','151675','151676'])
+plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676'])
