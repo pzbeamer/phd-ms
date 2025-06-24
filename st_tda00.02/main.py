@@ -483,9 +483,16 @@ def plot_single_vs_multiscale(filename):
             lines = [line.rstrip() for line in file]
         for i in range(10):
             w = lines[3*i+3]
+            
             w = w.replace(' Wasserstein Costs:','')
-            w = ast.literal_eval(w)
+            if f == '151673':
+                w = w.replace('np.float64(','')
+                w = w.replace('np.int64(','')
+                w = w.replace('))','*')
+                w = w.replace(')','')
+                w = w.replace('*',')')
             print(w)
+            w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             wass_mult.extend(list((d-np.mean(w))/np.mean(w) for d in w))
 
@@ -495,6 +502,16 @@ def plot_single_vs_multiscale(filename):
         for i in range(10):
             w = lines[3*i+2]
             w = w.replace('Costs:','')
+            print(w)
+            #This f
+            if f == '151673':
+                w = w.replace('np.float64(','')
+                w = w.replace('np.int64(','')
+                w = w.replace('), (','*')
+                w = w.replace(')]','&')
+                w = w.replace(')','')
+                w = w.replace('*','),(')
+                w = w.replace('&',')]')
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             wass_single.extend(list((d-np.mean(w))/np.mean(w) for d in w))
@@ -617,4 +634,5 @@ def plot_gt_merfish(bregma):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
 
 libd_single_scale_benchmark(['151673'])
-#plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676'])
+#libd_single_scale_benchmark(['151673'])
+plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676'])
