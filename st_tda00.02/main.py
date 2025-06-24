@@ -485,13 +485,15 @@ def plot_single_vs_multiscale(filename):
             w = lines[3*i+3]
             
             w = w.replace(' Wasserstein Costs:','')
+            #This file is formatted strangely
+
             if f == '151673':
                 w = w.replace('np.float64(','')
                 w = w.replace('np.int64(','')
                 w = w.replace('))','*')
                 w = w.replace(')','')
                 w = w.replace('*',')')
-            print(w)
+            
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             wass_mult.extend(list((d-np.mean(w))/np.mean(w) for d in w))
@@ -502,7 +504,7 @@ def plot_single_vs_multiscale(filename):
         for i in range(10):
             w = lines[3*i+2]
             w = w.replace('Costs:','')
-            print(w)
+            
             #This f
             if f == '151673':
                 w = w.replace('np.float64(','')
