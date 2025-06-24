@@ -13,7 +13,7 @@ import ast
 from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
-dir = '/Users/pbeamer/Documents/TDA/st_tda00.02/'
+dir = '/home/pbeamer/Documents/st1.0/'
 
     
 def test_cluster(filename,ydata,folder,out):
@@ -454,7 +454,7 @@ def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','15
         for i in range(10):
             clusters_as_weighted = []
             
-            input_file= dir+'results00.02/embedding/'+filename+'_'+str(i)+'_multiscale'
+            input_file= dir+filename+'_'+str(i)+'_multiscale'
 
             adata = sc.read_h5ad(input_file + '.h5ad')
             res = np.linspace(start=0.15,stop=.95,num=8)
@@ -462,7 +462,7 @@ def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','15
                 clusters_as_weighted.extend(clusters_to_weighted(adata.obs['clusters'+str(r)]))
         
             costs,m = ground_truth_benchmark(adata.obs['cluster'],clusters_as_weighted,adata.obsm['spatial'])
-            costs = list((c[0]*m,c[1]) for c in costs)
+            costs = list((c[0]*m,int(c[1])) for c in costs)
             cum_wasserstein.append(sum(list(c[0] for c in costs)))
             output += '\n'+str(i)
             output += '\nCosts:'+str(costs)
@@ -615,4 +615,6 @@ def plot_gt_merfish(bregma):
 #adata = sc.read_h5ad('results00.02/embedding/libd_151673_1_multiscale.h5ad')
 #for res in np.linspace(start=.15,stop=.95,num=8):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
-plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676'])
+
+libd_single_scale_benchmark(['151673'])
+#plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676'])

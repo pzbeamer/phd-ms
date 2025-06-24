@@ -382,7 +382,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial):
             d,ma = cluster_wasserstein(g,m,spatial)
             g_cost.append(d)
         optimal_costs.append((min(g_cost),np.argmin(g_cost)))
-        print((min(g_cost),np.argmin(g_cost)))
+        print((min(g_cost),int(np.argmin(g_cost))))
 
     return optimal_costs,ma
 
