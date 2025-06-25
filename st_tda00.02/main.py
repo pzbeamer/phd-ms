@@ -475,13 +475,21 @@ def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','15
         with open(dir+'results00.02/embedding/'+x+'_ground_truth-06-23.txt','w') as file:
             file.write(output)
         
-def plot_single_vs_multiscale(filename):
+def plot_single_vs_multiscale(filename,method=None):
     wass_mult = []
     wass_single = []
+    wass_mult_array = []
+    wass_single_array = []
     for f in filename:
+        ww = []
         with open(dir + 'results00.02/embedding/'+f+'-05-23.txt') as file:
             lines = [line.rstrip() for line in file]
+        best = lines[-1]
+        best = best.replace(' Best embedding:','')
+        best = ast.literal_eval(best)
         for i in range(10):
+            if method == 'best' and i != best:
+                continue
             w = lines[3*i+3]
             
             w = w.replace(' Wasserstein Costs:','')
@@ -496,12 +504,20 @@ def plot_single_vs_multiscale(filename):
             
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
+            ww.extend(w)
             wass_mult.extend(list((d-np.mean(w))/np.mean(w) for d in w))
+        wass_mult_array.append(ww)
 
-        
+        ww = []
         with open(dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
             lines = [line.rstrip() for line in file]
+
+        best = lines[-1]
+        best = best.replace('Best:','')
+        best = ast.literal_eval(best)
         for i in range(10):
+            if method == 'best' and i != best:
+                continue
             w = lines[3*i+2]
             w = w.replace('Costs:','')
             
@@ -517,18 +533,37 @@ def plot_single_vs_multiscale(filename):
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             wass_single.extend(list((d-np.mean(w))/np.mean(w) for d in w))
+            ww.extend(w)
+        wass_single_array.append(ww)
     r  = spearmanr(wass_mult,wass_single)
     print(r)
+    print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
+    print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
     plt.figure()
     plt.scatter(wass_mult,wass_single)
     plt.plot([-1,3],[-1,3], c='m')
     plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
+    plt.legend(['','y=x','y=%.2fx' % r.statistic])
     plt.xlabel('Multiscale Wasserstein')
     plt.ylabel('Single Scale Wass')
     plt.show()
+
     
-    print(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i])))
-    print(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i])))
+    for i in range(len(wass_mult_array)):
+        plt.clf()
+        cost_array = []
+        legend = []
+        cost_array.append(wass_mult_array[i])
+        cost_array.append(wass_single_array[i])
+        legend.append(filename[i]+' Multiscale')
+        legend.append(filename[i]+' Single Scale')
+        plt.figure()
+        plt.boxplot(cost_array,labels=legend)
+        plt.xlabel('Dataset',fontsize=20)
+        plt.ylabel('Wasserstein Cost (microns)',fontsize=20)
+        plt.show()
+    
+    
 
 def _test_(i):
     file = 'libd_151672_'+str(i)+'_multiscale.h5ad'
@@ -635,6 +670,6 @@ def plot_gt_merfish(bregma):
 #for res in np.linspace(start=.15,stop=.95,num=8):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
 
-libd_single_scale_benchmark(['151673'])
 #libd_single_scale_benchmark(['151673'])
-plot_single_vs_multiscale(['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676'])
+files = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']
+plot_single_vs_multiscale(files)
