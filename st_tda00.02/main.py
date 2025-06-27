@@ -14,6 +14,7 @@ from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
 dir = '/home/pbeamer/Documents/st1.0/'
+import scipy.stats as ss
 
     
 def test_cluster(filename,ydata,folder,out):
@@ -204,6 +205,7 @@ def correlation(filename):
     print(np.argmax(wass))
     import scipy.stats as ss
     print(ss.spearmanr(ami_max,wass))
+    print(ss.pearsonr(ami_max,wass))
     plt.figure(1,figsize=(4.88,3.84))
     plt.scatter(ami_max,wass)
     plt.title('Embedding quality vs NAME Wasserstein Cost',fontsize=25)
@@ -536,6 +538,7 @@ def plot_single_vs_multiscale(filename,method=None):
             ww.extend(w)
         wass_single_array.append(ww)
     r  = spearmanr(wass_mult,wass_single)
+    r  = ss.linregress(wass_mult,wass_single)
     print(r)
     print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
     print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
@@ -544,6 +547,8 @@ def plot_single_vs_multiscale(filename,method=None):
     plt.plot([-1,3],[-1,3], c='m')
     plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
     plt.legend(['','y=x','y=%.2fx' % r.statistic])
+    plt.plot([-1,3],[r.intercept+r.slope*-1,r.intercept+r.slope*3],c='r')
+    plt.legend(['','y=x','y=%.2fx' % r.slope])
     plt.xlabel('Multiscale Wasserstein')
     plt.ylabel('Single Scale Wass')
     plt.show()
