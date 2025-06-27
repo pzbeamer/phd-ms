@@ -432,10 +432,8 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
             #print(diagram_0d)
             cluster_weights = map_stable_clusters(len(Cocycles),diagram_0d,Cocycles,clusterings,adata,plots='manual')
             adata.uns['multiscale'] = cluster_weights
-            adata.write_h5ad('libd_'+x+'_'+str(i)+'_multiscale.h5ad')
             adata.write_h5ad(out_dir+'libd_'+x+'_'+str(i)+'_multiscale.h5ad')
             costs,m = ground_truth_benchmark(adata.obs['cluster'],cluster_weights,adata.obsm['spatial'])
-            costs = list((c[0]*m,c[1]) for c in costs)
             costs = list((float(c[0]*m),int(c[1])) for c in costs)
             cum_wasserstein.append(sum(list(c[0] for c in costs)))
             output += "\n Wasserstein Costs:"+ str(costs)
@@ -448,7 +446,6 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
         print(np.argmin(cum_wasserstein))
         output += "\n Cumulative costs:"+ str(cum_wasserstein)
         output += "\n Best embedding:" + str(np.argmin(cum_wasserstein))
-        with open('results00.02/embedding/'+x+'-05-23.txt','w') as file:
         with open(out_dir+x+'-06-27.txt','w') as file:
             file.write(output)
 
@@ -489,7 +486,7 @@ def plot_single_vs_multiscale(filename,method=None):
     wass_single_array = []
     for f in filename:
         ww = []
-        with open(dir + 'results00.02/embedding/'+f+'-05-23.txt') as file:
+        with open(in_dir + 'results00.02/embedding/'+f+'-06-27.txt') as file:
             lines = [line.rstrip() for line in file]
         best = lines[-1]
         best = best.replace(' Best embedding:','')
@@ -497,18 +494,12 @@ def plot_single_vs_multiscale(filename,method=None):
         for i in range(10):
             if method == 'best' and i != best:
                 continue
-            w = lines[3*i+3]
+            w = lines[3*i+2]
             
             w = w.replace(' Wasserstein Costs:','')
             #This file is formatted strangely
 
-            if f == '151673':
-                w = w.replace('np.float64(','')
-                w = w.replace('np.int64(','')
-                w = w.replace('))','*')
-                w = w.replace(')','')
-                w = w.replace('*',')')
-            
+          
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             ww.extend(w)
@@ -516,7 +507,7 @@ def plot_single_vs_multiscale(filename,method=None):
         wass_mult_array.append(ww)
 
         ww = []
-        with open(dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
+        with open(in_dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
             lines = [line.rstrip() for line in file]
 
         best = lines[-1]
@@ -545,13 +536,14 @@ def plot_single_vs_multiscale(filename,method=None):
     r  = spearmanr(wass_mult,wass_single)
     r  = ss.linregress(wass_mult,wass_single)
     print(r)
+    print(ss.ttest_rel(wass_mult,wass_single))
     print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
     print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
     plt.figure()
     plt.scatter(wass_mult,wass_single)
     plt.plot([-1,3],[-1,3], c='m')
-    plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
-    plt.legend(['','y=x','y=%.2fx' % r.statistic])
+    
+    plt.legend(['','y=x','y=%.2fx' % r.slope])
     plt.plot([-1,3],[r.intercept+r.slope*-1,r.intercept+r.slope*3],c='r')
     plt.legend(['','y=x','y=%.2fx' % r.slope])
     plt.xlabel('Multiscale Wasserstein')
