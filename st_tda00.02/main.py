@@ -13,8 +13,8 @@ import ast
 from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
-dir = '/home/pbeamer/Documents/st1.0/'
-
+in_dir = '/home/pbeamer/Documents/graphst/'
+out_dir = '/home/pbeamer/Documents/st1.0/results00.02/embedding'
     
 def test_cluster(filename,ydata,folder,out):
 
@@ -428,9 +428,9 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
             #print(diagram_0d)
             cluster_weights = map_stable_clusters(len(Cocycles),diagram_0d,Cocycles,clusterings,adata,plots='manual')
             adata.uns['multiscale'] = cluster_weights
-            adata.write_h5ad('libd_'+x+'_'+str(i)+'_multiscale.h5ad')
+            adata.write_h5ad(out_dir+'libd_'+x+'_'+str(i)+'_multiscale.h5ad')
             costs,m = ground_truth_benchmark(adata.obs['cluster'],cluster_weights,adata.obsm['spatial'])
-            costs = list((c[0]*m,c[1]) for c in costs)
+            costs = list((float(c[0]*m),int(c[1])) for c in costs)
             cum_wasserstein.append(sum(list(c[0] for c in costs)))
             output += "\n Wasserstein Costs:"+ str(costs)
             output += "\n Cumulative Cost:" + str(cum_wasserstein[-1])
@@ -442,7 +442,7 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
         print(np.argmin(cum_wasserstein))
         output += "\n Cumulative costs:"+ str(cum_wasserstein)
         output += "\n Best embedding:" + str(np.argmin(cum_wasserstein))
-        with open('results00.02/embedding/'+x+'-05-23.txt','w') as file:
+        with open(out_dir+x+'-06-27.txt','w') as file:
             file.write(output)
 
 #Compute differential expression for a set of multi-scale domains
