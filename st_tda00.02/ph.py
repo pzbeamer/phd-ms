@@ -364,6 +364,9 @@ def clusters_to_weighted(clusters):
 
 def cluster_wasserstein(cluster1,cluster2,spatial):
     cluster1 = cluster1/np.sum(cluster1)
+    for n in range(len(cluster2)):
+        if cluster2[n]<0.005:
+            cluster2[n] = 0
     cluster2 = cluster2/np.sum(cluster2)
     M = ot.dist(spatial,spatial)
     d = ot.emd2(cluster1,cluster2,M/np.max(M))
