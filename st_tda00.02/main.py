@@ -13,9 +13,6 @@ import ast
 from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
-dir = '/home/pbeamer/Documents/st1.0/'
-import scipy.stats as ss
-
 in_dir = '/home/pbeamer/Documents/graphst/'
 out_dir = '/home/pbeamer/Documents/st1.0/results00.02/embedding'
     
@@ -207,7 +204,6 @@ def correlation(filename):
     print(np.argmax(wass))
     import scipy.stats as ss
     print(ss.spearmanr(ami_max,wass))
-    print(ss.pearsonr(ami_max,wass))
     plt.figure(1,figsize=(4.88,3.84))
     plt.scatter(ami_max,wass)
     plt.title('Embedding quality vs NAME Wasserstein Cost',fontsize=25)
@@ -380,7 +376,36 @@ def embryo():
     print(output)
     with open('results00.02/'+output_file+'-5-08.txt','w') as file:
             file.write(output)
-    
+
+
+def osmfish():
+    input_file = in_dir+'osmfish_remove_excluded_graphst'
+    output_file = input_file
+    r = np.linspace(start=0.15,stop=.95,num=8)
+    tag = list(str(ree) for ree in r)
+    ydata='graphst'
+    output = ''
+    ground_truth = 'ClusterName'
+    preprocess_leiden(input_file,output_file,emb='X_gst',resolution=r)
+    adata = sc.read_h5ad(output_file+'.h5ad')
+    print(np.max(ot.dist(adata.obsm['spatial'],adata.obsm['spatial'])))
+    plot_ground_truth(output_file,ground_truth)
+    neighbors = find_neighbors(adata)
+    leiden_complex,clusterings=leiden_filtration(adata,neighbors,index='containment',tags=tag,order=range(len(r)))
+    dmat = filt_to_matrix(leiden_complex)
+    diagram_0d,Cocycles,_= union_find_dmat(dmat,edge_cut=1)
+        #print(diagram_0d)
+    cluster_weights = map_stable_clusters(len(Cocycles),diagram_0d,Cocycles,clusterings,adata,plots='on')
+    costs, m = ground_truth_benchmark(adata.obs[ground_truth],cluster_weights,adata.obsm['spatial'])
+    for i in range(len(costs)):
+            coords = list(n for n in range(0,len(adata.obs[ground_truth])) if adata.obs[ground_truth].iloc[n]==adata.obs[ground_truth].cat.categories.tolist()[i])
+            plot_matching(coords,cluster_weights[costs[i][1]],adata.obsm['spatial'])
+    output += "\n Wasserstein Costs:"+ str(costs)
+    output += "\n Cumulative Cost:" + str(sum(list(c[0]*m for c in costs)))
+    print(output)
+    with open(out_dir+'results00.02/'+output_file+'-7-01.txt','w') as file:
+            file.write(output)
+
 
 def libd(input = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676'],ind=range(10)):
     for x in input:
@@ -400,7 +425,7 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
             res = np.linspace(start=0.15,stop=.95,num=8)
             
             output += "\n"+str(i)
-            input_file= 'visium-human-dorsalateral_prefrontal_cortex/graphst/'+filename+'_gst_'+str(i)
+            input_file= in_dir+filename+'_gst_'+str(i)
             output_file = filename+'_gst'
             preprocess_leiden(input_file,output_file,emb='X_gst',resolution=res)
         
@@ -430,7 +455,7 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
             dmat = filt_to_matrix(leiden_complex)
             diagram_0d,Cocycles,_= union_find_dmat(dmat,edge_cut=1)
             #print(diagram_0d)
-            cluster_weights = map_stable_clusters(len(Cocycles),diagram_0d,Cocycles,clusterings,adata,plots='manual')
+            cluster_weights = map_stable_clusters(len(Cocycles),diagram_0d,Cocycles,clusterings,adata,plots='off')
             adata.uns['multiscale'] = cluster_weights
             adata.write_h5ad(out_dir+'libd_'+x+'_'+str(i)+'_multiscale.h5ad')
             costs,m = ground_truth_benchmark(adata.obs['cluster'],cluster_weights,adata.obsm['spatial'])
@@ -486,7 +511,7 @@ def plot_single_vs_multiscale(filename,method=None):
     wass_single_array = []
     for f in filename:
         ww = []
-        with open(in_dir + 'results00.02/embedding/'+f+'-06-27.txt') as file:
+        with open(dir + 'results00.02/embedding/'+f+'-05-23.txt') as file:
             lines = [line.rstrip() for line in file]
         best = lines[-1]
         best = best.replace(' Best embedding:','')
@@ -494,12 +519,18 @@ def plot_single_vs_multiscale(filename,method=None):
         for i in range(10):
             if method == 'best' and i != best:
                 continue
-            w = lines[3*i+2]
+            w = lines[3*i+3]
             
             w = w.replace(' Wasserstein Costs:','')
             #This file is formatted strangely
 
-          
+            if f == '151673':
+                w = w.replace('np.float64(','')
+                w = w.replace('np.int64(','')
+                w = w.replace('))','*')
+                w = w.replace(')','')
+                w = w.replace('*',')')
+            
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             ww.extend(w)
@@ -507,7 +538,7 @@ def plot_single_vs_multiscale(filename,method=None):
         wass_mult_array.append(ww)
 
         ww = []
-        with open(in_dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
+        with open(dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
             lines = [line.rstrip() for line in file]
 
         best = lines[-1]
@@ -534,18 +565,14 @@ def plot_single_vs_multiscale(filename,method=None):
             ww.extend(w)
         wass_single_array.append(ww)
     r  = spearmanr(wass_mult,wass_single)
-    r  = ss.linregress(wass_mult,wass_single)
     print(r)
-    print(ss.ttest_rel(wass_mult,wass_single))
     print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
     print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
     plt.figure()
     plt.scatter(wass_mult,wass_single)
     plt.plot([-1,3],[-1,3], c='m')
-    
-    plt.legend(['','y=x','y=%.2fx' % r.slope])
-    plt.plot([-1,3],[r.intercept+r.slope*-1,r.intercept+r.slope*3],c='r')
-    plt.legend(['','y=x','y=%.2fx' % r.slope])
+    plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
+    plt.legend(['','y=x','y=%.2fx' % r.statistic])
     plt.xlabel('Multiscale Wasserstein')
     plt.ylabel('Single Scale Wass')
     plt.show()
@@ -673,5 +700,8 @@ def plot_gt_merfish(bregma):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
 
 #libd_single_scale_benchmark(['151673'])
-files = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']
-plot_single_vs_multiscale(files)
+#files = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']
+#libd()
+
+#plot_single_vs_multiscale(files)
+osmfish()
