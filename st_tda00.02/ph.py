@@ -363,18 +363,19 @@ def clusters_to_weighted(clusters):
 
 
 def cluster_wasserstein(cluster1,cluster2,M):
-    
+    c1 = cluster1.copy()
+    c2 = cluster2.copy()
     for n in range(len(cluster2)):
-        if cluster1[n] < 0.01:
-            cluster1[n] = 0
-        if cluster2[n]<0.01:
-            cluster2[n] = 0
-    cluster1 = cluster1/np.sum(cluster1)
-    cluster2 = cluster2/np.sum(cluster2)
+        if c1[n] < 0.01:
+            c1[n] = 0
+        if c2[n]<0.01:
+            c2[n] = 0
+    c1 = c1/np.sum(c1)
+    c2 = c2/np.sum(c2)
     
-    d = ot.emd2(cluster1,cluster2,M)
+    d = ot.emd2(c1,c2,M)
     
-    return d,np.max(M)
+    return d
 
 def ground_truth_benchmark(ground_truth,multiscale,spatial):
     
@@ -383,10 +384,12 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial):
     optimal_costs = []
     for g in ground_truth:
         g_cost = []
+        dmat = ot.dist(spatial,spatial)
+        ma = np.max(dmat)
+        M = dmat/np.max(dmat)
         for m in multiscale:
-            dmat = ot.dist(spatial,spatial)
-            M = dmat/np.max(dmat)
-            d,ma = cluster_wasserstein(g,m,M)
+            
+            d = cluster_wasserstein(g,m,M)
             g_cost.append(d)
         optimal_costs.append((min(g_cost),np.argmin(g_cost)))
         print((min(g_cost),int(np.argmin(g_cost))))

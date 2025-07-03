@@ -13,8 +13,9 @@ import ast
 from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
-in_dir = '/home/pbeamer/Documents/graphst/'
-out_dir = '/home/pbeamer/Documents/st1.0/results00.02/embedding'
+import scipy.stats as ss
+IN_DIR = '/Users/pbeamer/Documents/TDA/st_tda00.02/results00.02/embedding/'
+OUT_DIR = '/Users/pbeamer/Documents/TDA/st_tda00.02/results00.02/'
     
 def test_cluster(filename,ydata,folder,out):
 
@@ -403,7 +404,7 @@ def osmfish():
     output += "\n Wasserstein Costs:"+ str(costs)
     output += "\n Cumulative Cost:" + str(sum(list(c[0]*m for c in costs)))
     print(output)
-    with open(out_dir+'results00.02/'+output_file+'-7-01.txt','w') as file:
+    with open(OUT_DIR+'results00.02/'+output_file+'-7-01.txt','w') as file:
             file.write(output)
 
 
@@ -475,43 +476,71 @@ def libd(input = ['151507','151508','151509','151510','151669','151670','151671'
             file.write(output)
 
 #Compute differential expression for a set of multi-scale domains
-def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']):
+def libd_single_scale_benchmark(input = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676'],comp='vs'):
     for x in input:
         filename = 'libd_'+x
         output = x
         cum_wasserstein = []
-        for i in range(10):
-            clusters_as_weighted = []
+        if comp == 'vs':
             
-            input_file= dir+filename+'_'+str(i)+'_multiscale'
+            for i in range(10):
+                input_file = IN_DIR + filename+'_'+str(i)+'_multiscale'
+                adata = sc.read_h5ad(input_file+'.h5ad')
+                res   = np.linspace(start=0.15,stop=.95,num=8)
+                
+                #Pick the resolution which best matches the ground truth number of clusters
+                r = np.argmin(list(abs(len(adata.obs['cluster'].cat.categories.to_list()) - len(adata.obs['clusters'+str(r)].cat.categories.to_list())) for r in res))
+                r = res[r]
+                #Convert to distribution
+                cluster_as_weighted = clusters_to_weighted(adata.obs['clusters'+str(r)])
+                costs,m = ground_truth_benchmark(adata.obs['cluster'],cluster_as_weighted,adata.obsm['spatial'])
+                costs = list((c[0]*m,int(c[1])) for c in costs)
+                cum_wasserstein.append(sum(list(c[0] for c in costs)))
+                output += '\n'+str(i)
+                output += '\nCosts:'+str(costs)
+                output += '\nCumulative:'+str(cum_wasserstein[-1])
+                print(cum_wasserstein[-1])
+            print(cum_wasserstein)
+            print(np.argmin(cum_wasserstein))
+            output += "\nList Cumulative:"+ str(cum_wasserstein)
+            output += "\nBest:" + str(np.argmin(cum_wasserstein))
+            with open(OUT_DIR+'embedding/'+x+'_ground_truth_vs-07-03.txt','w') as file:
+                file.write(output)
 
-            adata = sc.read_h5ad(input_file + '.h5ad')
-            res = np.linspace(start=0.15,stop=.95,num=8)
-            for r in res:
-                clusters_as_weighted.extend(clusters_to_weighted(adata.obs['clusters'+str(r)]))
-        
-            costs,m = ground_truth_benchmark(adata.obs['cluster'],clusters_as_weighted,adata.obsm['spatial'])
-            costs = list((c[0]*m,int(c[1])) for c in costs)
-            cum_wasserstein.append(sum(list(c[0] for c in costs)))
-            output += '\n'+str(i)
-            output += '\nCosts:'+str(costs)
-            output += '\nCumulative:'+str(cum_wasserstein[-1])
-            print(cum_wasserstein[-1])
-        print(cum_wasserstein)
-        print(np.argmin(cum_wasserstein))
-        output += "\nList Cumulative:"+ str(cum_wasserstein)
-        output += "\nBest:" + str(np.argmin(cum_wasserstein))
-        with open(dir+'results00.02/embedding/'+x+'_ground_truth-06-23.txt','w') as file:
-            file.write(output)
+        else:
+            for i in range(10):
+                clusters_as_weighted = []
+                
+                input_file= dir+filename+'_'+str(i)+'_multiscale'
+
+                adata = sc.read_h5ad(input_file + '.h5ad')
+                res = np.linspace(start=0.15,stop=.95,num=8)
+                for r in res:
+                    clusters_as_weighted.extend(clusters_to_weighted(adata.obs['clusters'+str(r)]))
+            
+                costs,m = ground_truth_benchmark(adata.obs['cluster'],clusters_as_weighted,adata.obsm['spatial'])
+                costs = list((c[0]*m,int(c[1])) for c in costs)
+                cum_wasserstein.append(sum(list(c[0] for c in costs)))
+                output += '\n'+str(i)
+                output += '\nCosts:'+str(costs)
+                output += '\nCumulative:'+str(cum_wasserstein[-1])
+                print(cum_wasserstein[-1])
+            print(cum_wasserstein)
+            print(np.argmin(cum_wasserstein))
+            output += "\nList Cumulative:"+ str(cum_wasserstein)
+            output += "\nBest:" + str(np.argmin(cum_wasserstein))
+            with open(dir+'results00.02/embedding/'+x+'_ground_truth-06-23.txt','w') as file:
+                file.write(output)
         
 def plot_single_vs_multiscale(filename,method=None):
+    
     wass_mult = []
     wass_single = []
     wass_mult_array = []
     wass_single_array = []
     for f in filename:
         ww = []
-        with open(dir + 'results00.02/embedding/'+f+'-05-23.txt') as file:
+        with open(OUT_DIR + 'embedding/'+f+'-05-23.txt') as file:
             lines = [line.rstrip() for line in file]
         best = lines[-1]
         best = best.replace(' Best embedding:','')
@@ -534,38 +563,46 @@ def plot_single_vs_multiscale(filename,method=None):
             w = ast.literal_eval(w)
             w = list(d[0] for d in w)
             ww.extend(w)
-            wass_mult.extend(list((d-np.mean(w))/np.mean(w) for d in w))
-        wass_mult_array.append(ww)
+            
+        
 
-        ww = []
-        with open(dir + 'results00.02/embedding/'+f+'_ground_truth-06-23.txt') as file:
+       
+        with open(OUT_DIR + 'embedding/'+f+'_ground_truth_vs-07-03.txt') as file:
             lines = [line.rstrip() for line in file]
 
         best = lines[-1]
         best = best.replace('Best:','')
         best = ast.literal_eval(best)
+        ww2 = []
         for i in range(10):
             if method == 'best' and i != best:
                 continue
-            w = lines[3*i+2]
-            w = w.replace('Costs:','')
+            w2 = lines[3*i+2]
+            w2 = w2.replace('Costs:','')
             
             #This f
             if f == '151673':
-                w = w.replace('np.float64(','')
-                w = w.replace('np.int64(','')
-                w = w.replace('), (','*')
-                w = w.replace(')]','&')
-                w = w.replace(')','')
-                w = w.replace('*','),(')
-                w = w.replace('&',')]')
-            w = ast.literal_eval(w)
-            w = list(d[0] for d in w)
-            wass_single.extend(list((d-np.mean(w))/np.mean(w) for d in w))
-            ww.extend(w)
-        wass_single_array.append(ww)
+                w2 = w2.replace('np.float64(','')
+                w2 = w2.replace('np.int64(','')
+                w2 = w2.replace('), (','*')
+                w2 = w2.replace(')]','&')
+                w2 = w2.replace(')','')
+                w2 = w2.replace('*','),(')
+                w2 = w2.replace('&',')]')
+            w2 = ast.literal_eval(w2)
+            w2 = list(d[0] for d in w2)
+            ww2.extend(w2)
+            
+        mean = np.mean(ww+ww2)
+        #ww = list((d-mean)/mean for d in ww)
+        #ww2 = list((d-mean)/mean for d in ww2)
+        wass_mult.extend(ww)
+        wass_single.extend(ww2)
+        wass_mult_array.append(ww)
+        wass_single_array.append(ww2)
     r  = spearmanr(wass_mult,wass_single)
     print(r)
+    print(ss.ttest_rel(wass_mult,wass_single))
     print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
     print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
     plt.figure()
@@ -576,7 +613,18 @@ def plot_single_vs_multiscale(filename,method=None):
     plt.xlabel('Multiscale Wasserstein')
     plt.ylabel('Single Scale Wass')
     plt.show()
-
+    plt.clf()
+    cost_array = []
+    legend = []
+    cost_array.append(wass_single)
+    cost_array.append(list(min(wass_single[i],wass_mult[i]) for i in range(len(wass_single))))
+    legend.append('Best Single Scale')
+    legend.append('Best Multiscale or Single Scale')
+    plt.figure()
+    plt.boxplot(cost_array,labels=legend)
+    plt.xlabel('Dataset',fontsize=20)
+    plt.ylabel('Wasserstein Cost (microns)',fontsize=20)
+    plt.show()
     
     for i in range(len(wass_mult_array)):
         plt.clf()
@@ -700,8 +748,8 @@ def plot_gt_merfish(bregma):
     #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
 
 #libd_single_scale_benchmark(['151673'])
-#files = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']
+files = ['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676']
 #libd()
 
-#plot_single_vs_multiscale(files)
-osmfish()
+plot_single_vs_multiscale(files)
+#libd_single_scale_benchmark(files)
