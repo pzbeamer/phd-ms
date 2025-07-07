@@ -384,7 +384,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial):
     optimal_costs = []
     for g in ground_truth:
         g_cost = []
-        dmat = ot.dist(spatial,spatial)
+        dmat = ot.dist(spatial,spatial,metric='euclidean')
         ma = np.max(dmat)
         M = dmat/np.max(dmat)
         for m in multiscale:

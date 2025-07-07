@@ -14,9 +14,9 @@ from scipy.special import logit
 import pandas as pd
 from scipy.stats import spearmanr
 import scipy.stats as ss
-IN_DIR = '/Users/pbeamer/Documents/TDA/st_tda00.02/results00.02/embedding/'
+IN_DIR = '/Users/pbeamer/Documents/TDA/st_tda00.02/'
 OUT_DIR = '/Users/pbeamer/Documents/TDA/st_tda00.02/results00.02/'
-    
+MERFISH = '/Users/pbeamer/Documents/TDA/st_tda00.02/MERFISH/'
 def test_cluster(filename,ydata,folder,out):
 
     tag = []
@@ -90,7 +90,8 @@ def run_res(filename,folder,res):
     leiden(adata,res=res,show=True,embedding='X_gst')
 
 def plot_ground_truth(adata,ground_truth = 'clusters'):
-    adata = sc.read_h5ad(adata+'.h5ad')
+    adata = sc.read_h5ad(IN_DIR+adata+'.h5ad')
+    print(adata.obsp['distances'])
     plt.figure(figsize=(8, 20/3))
     plt.set_cmap('magma')
     c = adata.obs[ground_truth]
@@ -99,8 +100,8 @@ def plot_ground_truth(adata,ground_truth = 'clusters'):
         plt.scatter(coords[:,0],coords[:,1],s=30)
     frame1 = plt.gca()
     plt.colorbar()
-    frame1.axes.xaxis.set_ticklabels([])
-    frame1.axes.yaxis.set_ticklabels([])    
+    #frame1.axes.xaxis.set_ticklabels([])
+    #frame1.axes.yaxis.set_ticklabels([])    
     #plt.title('# of Ground Truth Clusters:'+str(len(c.cat.categories.tolist())))
 
     plt.show()
@@ -223,34 +224,68 @@ def get_ami(filename):
         for res in r:
             ami.append(cluster_metrics(adata.obs['clusters'+str(res)],res,truth=adata.obs['cluster'])[2])
         ami_max.append(np.max(ami))
-def plot_violin(files,merfish = False,legend=[]):
+def plot_violin(files,tech = 'Visium',legend=[]):
     if not legend:
         legend = files
     cost_array = []
     import ast
     for f in files:
-        with open('results00.02/embedding/'+f+'-05-23.txt') as file:
-            lines = [line.rstrip() for line in file]
-        if merfish:
+        ind = next(i for i in range(len(files)) if files[i] == f)
+        
+        if tech == 'merfish':
+            with open(OUT_DIR+'merfish/'+str(legend[ind])+'/'+f+'.txt') as file:
+                lines = [line.rstrip() for line in file]
+            spatial = sc.read_h5ad(MERFISH +f[:-5]+'.h5ad').obsm['spatial']
+            
+            dmat = ot.dist(spatial,spatial)
+            ma = np.max(dmat)
             costs = lines[1]
             costs = costs.replace('Wasserstein Costs:','')
             costs = ast.literal_eval(costs)
-            costs = list(a*1000 for (a,b) in costs)
+            costs = list(a*1000/np.sqrt(ma) for (a,b) in costs)
+            cost_array.append(costs)
+        elif tech == 'osmfish':
+            with open(OUT_DIR+f+'-7-01.txt') as file:
+                lines = [line.rstrip() for line in file]
+            spatial = sc.read_h5ad(OUT_DIR +f+'_multiscale.h5ad').obsm['spatial']
+            spatial *= 0.065
+            dmat = ot.dist(spatial,spatial,metric='euclidean')
+            ma = np.max(dmat)
+            
+            costs = lines[1]
+            costs = costs.replace(' Wasserstein Costs:','')
+            costs = costs.replace('np.int64(','')
+            costs = costs.replace('))',')')
+            costs = ast.literal_eval(costs)
+            print(costs)
+            costs = list(a*ma for (a,b) in costs)
+            print(costs)
             cost_array.append(costs)
         else:
+            print(f)
+            with open(IN_DIR+f+'-05-23.txt') as file:
+                lines = [line.rstrip() for line in file]
+            max = lines[1]
+            max = max.replace(' Max distance:','')
+            max = max.replace('np.float64(','')
+            max = max.replace(')','')
+            max = ast.literal_eval(max)
+
+            with open(IN_DIR+f+'-06-27.txt') as file:
+                lines = [line.rstrip() for line in file]
+
+            
             best = lines[-1]
             best = best.replace(' Best embedding:','')
             best = ast.literal_eval(best)
-            max = lines[1]
-            max = max.replace(' Max distance:','')
-            max = ast.literal_eval(max)
-            costs = lines[3*(best+1)]
+            
+            costs = lines[3*best+2]
             costs = costs.replace(' Wasserstein Costs:','')
             costs = ast.literal_eval(costs)
-            costs = list(a for (a,b) in costs)
+            costs = list(a/np.sqrt(max) for (a,b) in costs)
             cost_array.append(costs)
 
-    plt.figure(1)
+    plt.figure(figsize=(1.8,1.8))
     plt.boxplot(cost_array,labels=legend)
     plt.xlabel('Dataset',fontsize=20)
     plt.ylabel('Wasserstein Cost (microns)',fontsize=20)
@@ -338,16 +373,17 @@ def benchmarks():
     x = ['151507','151508','151509','151510','151669','151670','151671','151672','151673','151674','151675','151676']
     t = [5,5,6,4,5,9,3,4,0,4,6,1]
     #x = ['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676']
-    correlation(x)
     plot_violin(x)
+    correlation(x)
+    
 
 def benchmarks_merfish():
-    x = ['merfish/-4/merfish_-4_unambiguous_graphst-5-25',\
-         'merfish/-9/merfish_-9_unambiguous_graphst-5-19',\
-            'merfish/-14/merfish_-14_unambiguous_graphst-5-25',\
-                'merfish/-19/merfish_-19_unambiguous_graphst-5-25',\
-                    'merfish/-24/merfish_-24_unambiguous_graphst-5-25']
-    plot_violin(x,merfish=True,legend=['Bregma -.04','Bregma -.09','Bregma -.14','Bregma -.19','Bregma -24'])
+    x = ['merfish_-4_unambiguous_graphst-5-25',\
+         'merfish_-9_unambiguous_graphst-5-19',\
+            'merfish_-14_unambiguous_graphst-5-25',\
+                'merfish_-19_unambiguous_graphst-5-25',\
+                    'merfish_-24_unambiguous_graphst-5-25']
+    plot_violin(x,tech='merfish',legend=['-4','-9','-14','-19','-24'])
 def embryo():
     
    
@@ -386,7 +422,7 @@ def osmfish():
     tag = list(str(ree) for ree in r)
     ydata='graphst'
     output = ''
-    ground_truth = 'ClusterName'
+    ground_truth = 'Region'
     preprocess_leiden(input_file,output_file,emb='X_gst',resolution=r)
     adata = sc.read_h5ad(output_file+'.h5ad')
     print(np.max(ot.dist(adata.obsm['spatial'],adata.obsm['spatial'])))
@@ -542,6 +578,11 @@ def plot_single_vs_multiscale(filename,method=None):
         ww = []
         with open(OUT_DIR + 'embedding/'+f+'-05-23.txt') as file:
             lines = [line.rstrip() for line in file]
+        max = lines[1]
+        max = max.replace(' Max distance:','')
+        max = max.replace('np.float64(','')
+        max = max.replace(')','')
+        max = ast.literal_eval(max)
         best = lines[-1]
         best = best.replace(' Best embedding:','')
         best = ast.literal_eval(best)
@@ -561,7 +602,7 @@ def plot_single_vs_multiscale(filename,method=None):
                 w = w.replace('*',')')
             
             w = ast.literal_eval(w)
-            w = list(d[0] for d in w)
+            w = list(d[0]/np.sqrt(max) for d in w)
             ww.extend(w)
             
         
@@ -590,7 +631,7 @@ def plot_single_vs_multiscale(filename,method=None):
                 w2 = w2.replace('*','),(')
                 w2 = w2.replace('&',')]')
             w2 = ast.literal_eval(w2)
-            w2 = list(d[0] for d in w2)
+            w2 = list(d[0]/np.sqrt(max) for d in w2)
             ww2.extend(w2)
             
         mean = np.mean(ww+ww2)
@@ -605,11 +646,12 @@ def plot_single_vs_multiscale(filename,method=None):
     print(ss.ttest_rel(wass_mult,wass_single))
     print('# of clusters with single better than multiscale:'+str(len(list(wass_mult[i] for i in range(len(wass_mult)) if wass_mult[i]>wass_single[i]))))
     print('# of clusters with multi better than single scale:'+str(len(list(wass_single[i] for i in range(len(wass_mult)) if wass_single[i]>wass_mult[i]))))
-    plt.figure()
+    plt.figure(figsize=(4.88,3.84))
+    plt.plot([0,22],[0,22], c='m')
+    plt.legend(['y=x'])
     plt.scatter(wass_mult,wass_single)
-    plt.plot([-1,3],[-1,3], c='m')
-    plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
-    plt.legend(['','y=x','y=%.2fx' % r.statistic])
+    #plt.plot([-1,3],[-1*r.statistic,3*r.statistic],c='r')
+    plt.title('')
     plt.xlabel('Multiscale Wasserstein')
     plt.ylabel('Single Scale Wass')
     plt.show()
@@ -617,12 +659,12 @@ def plot_single_vs_multiscale(filename,method=None):
     cost_array = []
     legend = []
     cost_array.append(wass_single)
-    cost_array.append(list(min(wass_single[i],wass_mult[i]) for i in range(len(wass_single))))
-    legend.append('Best Single Scale')
-    legend.append('Best Multiscale or Single Scale')
-    plt.figure()
+    cost_array.append(wass_mult)
+    legend.append( 'Single-Scale')
+    legend.append('Multiscale')
+    plt.figure(figsize=(4.88,3.84))
     plt.boxplot(cost_array,labels=legend)
-    plt.xlabel('Dataset',fontsize=20)
+
     plt.ylabel('Wasserstein Cost (microns)',fontsize=20)
     plt.show()
     
@@ -680,7 +722,7 @@ def libd_ami():
 
 def plot_multiscale(filename,save=True,show=True,inds='all'):
     
-    adata = sc.read_h5ad(filename+'.h5ad')
+    adata = sc.read_h5ad(OUT_DIR+filename+'.h5ad')
     
     multiscale = adata.uns['multiscale']
     if inds == 'all':
@@ -706,12 +748,27 @@ def plot_multiscale(filename,save=True,show=True,inds='all'):
                 plt.show()
 
 def plot_gt_libd(num,i):
-    adata = sc.read_h5ad('results00.02/embedding/libd_'+num+'_'+str(i)+'_multiscale.h5ad')
-    with open('results00.02/embedding/'+num+'-05-23.txt') as file:
+    adata = sc.read_h5ad(OUT_DIR+'embedding/libd_'+num+'_'+str(i)+'_multiscale.h5ad')
+    with open(OUT_DIR+'embedding/'+num+'-05-23.txt') as file:
             lines = [line.rstrip() for line in file]
+    max = lines[1]
+    max = max.replace(' Max distance:','')
     costs = lines[3*i+3]
     costs = costs.replace(' Wasserstein Costs:','')
+    if num == '151673':
+        max = max.replace('np.float64(','')
+        max = max.replace(')','')
+        costs = costs.replace('np.float64(','')
+        costs = costs.replace('np.int64(','')
+        costs = costs.replace('), (','*')
+        costs = costs.replace(')]','&')
+        costs = costs.replace(')','')
+        costs = costs.replace('*','),(')
+        costs = costs.replace('&',')]')
+    
     costs = ast.literal_eval(costs)
+    max = ast.literal_eval(max)
+    costs = list((c[0]/np.sqrt(max),c[1]) for c in costs)
     print(costs)
     costs = list(c[1] for c in costs)
     multiscale = adata.uns['multiscale']
@@ -719,37 +776,63 @@ def plot_gt_libd(num,i):
         coords = list(n for n in range(0,len(adata.obs['cluster'])) if adata.obs['cluster'].iloc[n]==adata.obs['cluster'].cat.categories.tolist()[i])
         plot_matching(coords,multiscale[costs[i]],adata.obsm['spatial'])
 def plot_gt_merfish(bregma):
-    adata = sc.read_h5ad('MERFISH/merfish_'+bregma+'_unambiguous_graphst.h5ad')
-    with open('results00.02/merfish/'+bregma+'/merfish_'+bregma+'_unambiguous_graphst-5-25.txt') as file:
+    adata = sc.read_h5ad(IN_DIR+'MERFISH/merfish_'+bregma+'_unambiguous_graphst.h5ad')
+    with open(OUT_DIR+'merfish/'+bregma+'/merfish_'+bregma+'_unambiguous_graphst-5-25.txt') as file:
             lines = [line.rstrip() for line in file]
+    dmat = ot.dist(adata.obsm['spatial'])
+    ma = np.max(dmat)
     costs = lines[1]
     costs = costs.replace('Wasserstein Costs:','')
     costs = ast.literal_eval(costs)
+    costs = list((c[0]/np.sqrt(ma),c[1]) for c in costs)
     print(costs)
     costs = list(c[1] for c in costs)
     multiscale = adata.uns['multiscale']
     for i in range(len(costs)):
         coords = list(n for n in range(0,len(adata.obs['clusters'])) if adata.obs['clusters'].iloc[n]==adata.obs['clusters'].cat.categories.tolist()[i])
-        plot_matching(coords,multiscale[costs[i]],adata.obsm['spatial'],save='results00.02/merfish/'+bregma+str(i))
-        
+        plot_matching(coords,multiscale[costs[i]],adata.obsm['spatial'],save=False)
+def plot_gt_osmfish():
+    adata = sc.read_h5ad(OUT_DIR+'osmfish_multiscale.h5ad')
+    print(adata.obs['Region'].cat.categories.tolist())
+    with open(OUT_DIR+'osmfish-7-01.txt') as file:
+            lines = [line.rstrip() for line in file]
+    dmat = ot.dist(adata.obsm['spatial']*0.065,metric='euclidean')
+    ma = np.max(dmat)
+    costs = lines[1]
+    costs = costs.replace('Wasserstein Costs:','')
+    costs = costs.replace('np.int64(','')
+    costs = costs.replace('))',')')
+    
+    costs = ast.literal_eval(costs)
+    costs = list((c[0]*ma,c[1]) for c in costs)
+    print(costs)
+    costs = list(c[1] for c in costs)
+    multiscale = adata.uns['multiscale']
+    for i in range(len(costs)):
+        print(costs[i])
+        coords = list(n for n in range(0,len(adata.obs['Region'])) if adata.obs['Region'].iloc[n]==adata.obs['Region'].cat.categories.tolist()[i])
+        plot_matching(coords,multiscale[costs[i]],adata.obsm['spatial'],save=False)
 
 #for b in [-24]:#[-4,-14,-19,-24]:
     #merfish_mouse(bregma=str(b))    
 #benchmarks_merfish()
 #tumor()
 #diff_express_tumor('adata_tumor_multiscale.h5ad',[34,19,39,45,44,24,15,31,33],['4','5'])
-#plot_gt_merfish('-24')
+#plot_gt_merfish('-4')
 #libd(['151673'],ind=[0])
 #benchmarks()
 #plot_gt_libd('151673',1)
 #plot_ground_truth('results00.02/mouse_brain/mouse_brain_multiscale',ground_truth='clusters0.75')
 #adata = sc.read_h5ad('results00.02/embedding/libd_151673_1_multiscale.h5ad')
 #for res in np.linspace(start=.15,stop=.95,num=8):
-    #plot_ground_truth('results00.02/embedding/libd_151673_1_multiscale',ground_truth='clusters'+str(res))
+    #plot_ground_truth('libd_151673_1_multiscale',ground_truth='clusters'+str(res))
 
 #libd_single_scale_benchmark(['151673'])
 files = ['151507','151508','151509','151510','151669','151670','151671','151672','151674','151675','151676']
 #libd()
-
-plot_single_vs_multiscale(files)
+#plot_multiscale('embedding/libd_151673_1_multiscale',save=False)
+#plot_single_vs_multiscale(files)
 #libd_single_scale_benchmark(files)
+#plot_multiscale('osmfish_multiscale',inds=[228,230,257,169,202,351,287,344,308,204,348])
+plot_gt_osmfish()
+#plot_violin(['osmfish'],tech='osmfish',legend=[])
