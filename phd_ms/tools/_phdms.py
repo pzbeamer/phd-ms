@@ -253,14 +253,14 @@ def map_clusters_manual(diagram_0d,cocycles,clusterings,adata,filt=1,manual="off
             return z_track
         
 
-def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False):
+def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1):
     
     ground_truth_distributions,gmat = clusters_to_distribution(ground_truth)
     multiscale_distributions,mmat = clusters_to_distribution(multiscale)
     
-    dmat = ot.dist(spatial,spatial,metric='euclidean')
+    dmat = ot.dist(spatial*conversion_factor,spatial*conversion_factor,metric='euclidean')
     ma = np.max(dmat)
-    M = dmat/np.max(dmat)
+    M = dmat/ma
     optimal_costs = []
     print('Wasserstein distance, index of optimal multiscale domain:')
     for g in ground_truth_distributions:
@@ -270,7 +270,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False):
             
             d = ot.emd2(g,m,M)
             g_cost.append(d)
-        optimal_costs.append((min(g_cost),np.argmin(g_cost)))
+        optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
         print((min(g_cost)*ma,int(np.argmin(g_cost))))
 
     if plots:
