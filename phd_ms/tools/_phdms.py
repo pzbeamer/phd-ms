@@ -89,10 +89,6 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     diagram_0d,cocycles,_= union_find_dmat(dmat,edge_cut=1)
     if num_domains == 0:
         num_domains = len(cocycles)
-
-    #Redirect if we're doing manual plotting
-    if plots == "manual":
-        return map_clusters_manual(num_domains,diagram_0d,cocycles,clusterings)
     
     #Sort persistent homology results by death time
     diagram_0d,cocycles = zip(*sorted(zip(diagram_0d,cocycles),key=lambda x: x[0][2],reverse=True))
@@ -170,29 +166,27 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
 
 
 #Currently broken
-def map_clusters_manual(diagram_0d,cocycles,clusterings,adata,filt=1,manual="off"):
-    
+def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='persistence',redundant_filter=True):
     from mpl_point_clicker import clicker
-    diagram_0d,cocycles = zip(*sorted(zip(diagram_0d,cocycles),key=lambda x: x[0][2],reverse=True))
-    index = next(i for i in range(len(diagram_0d)) if diagram_0d[i][2]<filt)
-    diagram_0d = diagram_0d[index:]
-    cocycles = list(cocycles[index:]) 
-    
+
+    domains = map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=filt,plots='off',order=order,redundant_filter=redundant_filter)
+    tracker = []
     exit = False
     while not exit:
-        z_track = []
-        spatial = adata.obsm['spatial']
-        plt.figure(figsize=(8, 20/3))
-        plt.rcParams.update({'font.size': 30})
+        
+        plt.figure(figsize=[15,15])
+        plt.rcParams.update({'font.size': 25})
         ax = plt.gca()
         ax.scatter(spatial[:,0],spatial[:,1],c='k')
-        ax.set_title('Click to visualize domains')
+        ax.set_title('Click once to specify spot. Close to visualize domains')
         ax.axes.xaxis.set_ticklabels([])
         ax.axes.yaxis.set_ticklabels([])
-        
-        klicker = clicker(ax, ["event"], markers=["*"],markersize=20)
+        klicker = clicker(ax, ["spot"], markers=["*"],markersize=20,colors=['red'])
+
+
+        plt.tight_layout()
         plt.show()
-        xy = klicker.get_positions()['event']
+        xy = klicker.get_positions()['spot']
         
         input_ind = np.argmin((spatial[:,0]-xy[-1][0])**2+(spatial[:,1]-xy[-1][1])**2)
         #print(input_ind)
@@ -201,56 +195,15 @@ def map_clusters_manual(diagram_0d,cocycles,clusterings,adata,filt=1,manual="off
         x = spatial[:,0]
         y = spatial[:,1]
         
-        for index in range(len(input_cluster)):
-            clust = input_cluster[index]
-            print(clust)
-            z = np.ones(len(x))
-            feature_list = list((set(cocycles[i]),diagram_0d[i][2]) for i in range(len(cocycles)) if clust in cocycles[i])
-            
-            feature_list = sorted(feature_list,key= lambda x: x[1],reverse=True)
-            feature_list.append(({clust},0))
-            print(feature_list)
-            tracker = set()
+        for d in domains.transpose():
+            if d[input_ind] > .95:
+                tracker.append(d)
+                plot_multiscale(d,spatial,marker=xy[-1])
+            plt.show()
 
-            tracker = set()
-            for i in range(len(feature_list)-1, -1, -1):
-            
-                spots = set()
-                for cc in feature_list[i][0]:
-                    spots = set.union(spots,clusterings[cc])
-                z[list(spots-tracker)] = feature_list[i][1]
-                tracker = set.union(tracker,spots)
-            
-            #Check if the current feature overlaps too heavily with an already visualized one.
-            nontrivial = set(j for j in range(len(z)) if z[j]<.8)
-            for guy in z_track:
-                
-                g = set(j for j in range(len(guy)) if guy[j]<.8)
-                
-                if len(nontrivial.intersection(g))/len(nontrivial.union(g)) > 0.9:
-                    nontrivial = False
-                    break
-            if nontrivial:        
-                z_track.append(z) 
-        for i in range(len(z_track)):
-            max = np.max(list(z for z in z_track[i]))
-            min = np.min(list(z for z in z_track[i]))-.00001
-                
-            z  = list(1-(z_track[i][j]-min)/(max-min+.00001) for j in range(len(z_track[i])))
-            z_track[i] = z
-            plt.figure(figsize=(8, 20/3))
-            plt.scatter(x,y,c=logit(z),cmap='magma',s=30,edgecolors='k',linewidths=.5)
-            plt.scatter(xy[-1][0],xy[-1][1],marker='*',s=100,c='r')
-            cbar = plt.colorbar()
-            cbar.ax.set_ylabel('logit(coreness)')
-            frame1 = plt.gca()
-            frame1.axes.xaxis.set_ticklabels([])
-            frame1.axes.yaxis.set_ticklabels([])
-            
-        plt.show()
-        exit = input("Press E to exit")
+        exit = input('Press E to exit.')
         if exit == 'E':
-            return z_track
+            return tracker
         
 
 def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1):
@@ -320,7 +273,7 @@ def construct_clustering(adata,domains):
     #print(category)
     return pd.Categorical(category,categories=list(str(i) for i in range(1,len(domains)+1)))
 
-def plot_multiscale(multiscale,spatial,title=''):
+def plot_multiscale(multiscale,spatial,title='',marker=np.array([False])):
     x = spatial[:,0]
     y = spatial[:,1]
     z = multiscale.copy()
@@ -330,6 +283,8 @@ def plot_multiscale(multiscale,spatial,title=''):
     plt.figure(figsize=(8, 20/3))
     plt.title(title)
     plt.scatter(x,y,c=logit(z),cmap='magma',s=30,edgecolors='k',linewidths=.5)
+    if np.any(marker):
+        plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.5,marker='*')
     cbar = plt.colorbar()
     cbar.ax.set_ylabel('logit(coreness)')
     frame1 = plt.gca()
