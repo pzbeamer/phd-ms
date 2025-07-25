@@ -8,6 +8,7 @@ import numpy as np
 
 ## Necessary parameters
 #Change this line to the file with input data
+#Omit .h5ad extension!
 DATA = '/home/pbeamer/Documents/graphst/visium_hne_graphst'
 
 
