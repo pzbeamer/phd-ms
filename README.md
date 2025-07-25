@@ -9,7 +9,7 @@ Multiscale domain identification for spatial transcriptomic data.
 Simply install with pip:
 
 
-    pip install phd-ms
+    pip install phd_ms
 
 Or install from source by downloading, cd to this directory, using:
      
