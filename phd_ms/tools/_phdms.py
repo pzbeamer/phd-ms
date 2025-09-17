@@ -3,7 +3,7 @@
 import numpy as np
 import scanpy as sc
 import gudhi as gd
-from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, clusters_to_distribution
+from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, clusters_to_distribution, mutual_information
 import matplotlib.pyplot as plt
 from scipy.special import logit
 import ot
@@ -220,18 +220,23 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
         g_cost = []
         
         for m in multiscale_distributions:
-            
+    
             d = ot.emd2(g,m,M)
             g_cost.append(d)
         optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
         print((min(g_cost)*ma,int(np.argmin(g_cost))))
-
+    if not isinstance(multiscale,pd.Series):
+        mi,nmi = mutual_information(gmat,mmat[:,list(o[1] for o in optimal_costs)])
+    else: 
+        mi,nmi = mutual_information(gmat,mmat)
+    print(f'Mutual information: {mi}')
+    print(f'Normalized Mutual information: {nmi}')
     if plots:
         for j in range(len(optimal_costs)):
             plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
             plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
         plt.show()
-    return optimal_costs,ma
+    return optimal_costs,ma,mi,nmi
 
 def construct_clustering(adata,domains):
     category = np.zeros(adata.shape[0])
