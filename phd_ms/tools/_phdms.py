@@ -206,37 +206,66 @@ def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='per
             return tracker
         
 
-def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1):
-    
+def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1,metrics=['wasserstein','mi','nmi']):
+
     ground_truth_distributions,gmat = clusters_to_distribution(ground_truth)
     multiscale_distributions,mmat = clusters_to_distribution(multiscale)
-    
-    dmat = ot.dist(spatial*conversion_factor,spatial*conversion_factor,metric='euclidean')
-    ma = np.max(dmat)
-    M = dmat/ma
-    optimal_costs = []
-    print('Wasserstein distance, index of optimal multiscale domain:')
-    for g in ground_truth_distributions:
-        g_cost = []
-        
-        for m in multiscale_distributions:
-    
-            d = ot.emd2(g,m,M)
-            g_cost.append(d)
-        optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
-        print((min(g_cost)*ma,int(np.argmin(g_cost))))
-    if not isinstance(multiscale,pd.Series):
-        mi,nmi = mutual_information(gmat,mmat[:,list(o[1] for o in optimal_costs)])
-    else: 
-        mi,nmi = mutual_information(gmat,mmat)
-    print(f'Mutual information: {mi}')
-    print(f'Normalized Mutual information: {nmi}')
-    if plots:
-        for j in range(len(optimal_costs)):
-            plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
-            plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
-        plt.show()
-    return optimal_costs,ma,mi,nmi
+    for metric in metrics:
+        output = {}
+        if metric == 'wasserstein':
+            dmat = ot.dist(spatial*conversion_factor,spatial*conversion_factor,metric='euclidean')
+            ma = np.max(dmat)
+            M = dmat/ma
+            optimal_costs = []
+            print('Wasserstein distance, index of optimal multiscale domain:')
+            for g in ground_truth_distributions:
+                g_cost = []
+                
+                for m in multiscale_distributions:
+            
+                    d = ot.emd2(g,m,M)
+                    g_cost.append(d)
+                
+                optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
+                print((min(g_cost)*ma,int(np.argmin(g_cost))))
+            output['wasserstein costs'] = list(o[0] for o in optimal_costs)
+            output['wasserstein matches'] = list(o[1] for o in optimal_costs)
+            if plots:
+                for j in range(len(optimal_costs)):
+                    plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
+                    plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
+                plt.show()
+        elif metric == 'nmi':
+            nmi_feats = []
+            overlap = gmat.T @ mmat
+            for i in range(gmat.shape[1]):
+                for j in range(mmat.shape[1]):
+                    overlap[i,j] /= (np.linalg.norm(gmat[:,i])*np.linalg.norm(mmat[:,j]))
+                    #overlap[i,j] /= (np.abs(np.sum(gmat[:,i])-np.sum(mmat[:,j][mmat[:,j] > 0 and gmat[:,i] > 0]))+1e-10)
+            for i in range(gmat.shape[1]):
+                indices = np.unravel_index(np.argmax(overlap,axis=None),overlap.shape)
+
+                nmi_feats.append(indices)
+                overlap[:,indices[1]] = -1
+                overlap[indices[0],:] = -1
+            print(nmi_feats)
+            nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
+            
+            nmi_feats = list(n[1] for n in nmi_feats)
+            mi,nmi = mutual_information(gmat,mmat[:,nmi_feats])
+            print(f'Mutual information: {mi}')
+            print(f'Normalized Mutual information: {nmi}')
+            print(f'NMI feature matches: {nmi_feats}')
+            output['nmi'] = nmi
+            output['nmi matches'] = nmi_feats
+            output['mi'] = mi
+            if plots:
+                for j in range(len(nmi_feats)):
+                    plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
+                    plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='Best match '+str(j))
+                plt.show()
+
+    return output
 
 def construct_clustering(adata,domains):
     category = np.zeros(adata.shape[0])
