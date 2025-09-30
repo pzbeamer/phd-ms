@@ -113,7 +113,7 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
                 
         x = spatial[:,0]
         y = spatial[:,1]
-        coreness = np.ones(len(x))
+        coreness = 1.001*np.ones(len(x))
         #Compute coreness score for each point in the tissue
         #iterate backwards through features to find filtration value where point first appears in multiscale domain
         feature_list = sorted(feature_list,key= lambda x: x[1],reverse=True)
