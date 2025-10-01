@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.special import logit
 import ot
 import pandas as pd
+from scipy.optimize import linear_sum_assignment
 
 def preprocess_leiden(input_file,output_file='',emb='X_gst',resolution=np.linspace(start=0.05,stop=.95,num=10),res_keys=[],ground_truth='cluster'):
     
@@ -236,33 +237,29 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
                     plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
                 plt.show()
         elif metric == 'nmi':
-            nmi_feats = []
+            
+            
             overlap = gmat.T @ mmat
             for i in range(gmat.shape[1]):
                 for j in range(mmat.shape[1]):
-                    overlap[i,j] /= (np.linalg.norm(gmat[:,i])*np.linalg.norm(mmat[:,j]))
-                    #overlap[i,j] /= (np.abs(np.sum(gmat[:,i])-np.sum(mmat[:,j][mmat[:,j] > 0 and gmat[:,i] > 0]))+1e-10)
-            for i in range(gmat.shape[1]):
-                indices = np.unravel_index(np.argmax(overlap,axis=None),overlap.shape)
-
-                nmi_feats.append(indices)
-                overlap[:,indices[1]] = -1
-                overlap[indices[0],:] = -1
-            print(nmi_feats)
-            nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
+                    overlap[i,j] /= (np.linalg.norm(gmat[:,i])**2 + np.linalg.norm(mmat[:,j])**2 - np.inner(gmat[:,i],mmat[:,j]))
+            a,b = linear_sum_assignment(overlap,maximize=True)
+            nmi_feats = list(zip(a,b))
             
+
+            nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
             nmi_feats = list(n[1] for n in nmi_feats)
             mi,nmi = mutual_information(gmat,mmat[:,nmi_feats])
-            print(f'Mutual information: {mi}')
-            print(f'Normalized Mutual information: {nmi}')
-            print(f'NMI feature matches: {nmi_feats}')
-            output['nmi'] = nmi
-            output['nmi matches'] = nmi_feats
-            output['mi'] = mi
+            output['prod'] = {}
+            output['prod']['nmi'] = nmi
+            output['prod']['nmi matches'] = nmi_feats
+            output['prod']['mi'] = mi
+
             if plots:
                 for j in range(len(nmi_feats)):
                     plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
-                    plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='Best match '+str(j))
+                    plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='Best match'+str(j))
+                    
                 plt.show()
 
     return output
@@ -316,7 +313,7 @@ def plot_multiscale(multiscale,spatial,title='',marker=np.array([False])):
     
     plt.figure(figsize=(8, 20/3))
     plt.title(title)
-    plt.scatter(x,y,c=logit(z),cmap='magma',s=30,edgecolors='k',linewidths=.5)
+    plt.scatter(x,y,c=logit(z),cmap='coolwarm',s=30,linewidths=.5)
     if np.any(marker):
         plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.5,marker='*')
     cbar = plt.colorbar()
