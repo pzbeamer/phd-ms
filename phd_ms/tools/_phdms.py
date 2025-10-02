@@ -9,11 +9,21 @@ from scipy.special import logit
 import ot
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
+import tracemalloc
+import time
 
-def preprocess_leiden(input_file,output_file='',emb='X_gst',resolution=np.linspace(start=0.05,stop=.95,num=10),res_keys=[],ground_truth='cluster'):
+def preprocess_leiden(input_file,output_file='',emb='X_gst',
+                      resolution=np.linspace(start=0.05,stop=.95,num=10),
+                      res_keys=[],ground_truth='cluster',neighbors=15):
     
     adata = sc.read_h5ad(input_file+'.h5ad')
-    leiden(adata,res=resolution,show=False,embedding=emb,res_keys=res_keys,ground_truth=ground_truth)
+    tracemalloc.start()
+    start=time.perf_counter()
+    leiden(adata,res=resolution,show=False,embedding=emb,res_keys=res_keys,ground_truth=ground_truth,scores=False,neighbors=neighbors)
+    end=time.perf_counter()
+    adata.uns['leiden_compute'] = end-start
+    adata.uns['leiden_memory'] = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
     adata.write_h5ad(output_file+'.h5ad')
 
 def cluster_filtration(adata,res_keys,index='containment',order=[]):
@@ -228,7 +238,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
                     g_cost.append(d)
                 
                 optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
-                print((min(g_cost)*ma,int(np.argmin(g_cost))))
+                print(f'{min(g_cost)*ma},{np.argmin(g_cost)}')
             output['wasserstein costs'] = list(o[0] for o in optimal_costs)
             output['wasserstein matches'] = list(o[1] for o in optimal_costs)
             if plots:
@@ -237,24 +247,26 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
                     plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
                 plt.show()
         elif metric == 'nmi':
-            
-            
-            overlap = gmat.T @ mmat
-            for i in range(gmat.shape[1]):
-                for j in range(mmat.shape[1]):
-                    overlap[i,j] /= (np.linalg.norm(gmat[:,i])**2 + np.linalg.norm(mmat[:,j])**2 - np.inner(gmat[:,i],mmat[:,j]))
+            mask1 = np.sum(gmat,axis=1,keepdims=True)
+            mask2 = np.sum(mmat,axis=1,keepdims=True)
+            d1 = gmat[np.all(mask1, axis=1) & np.all(mask2, axis=1),:]
+            d2 = mmat[np.all(mask1, axis=1) & np.all(mask2, axis=1),:]
+
+            overlap = d1.T @ d2
+            for i in range(d1.shape[1]):
+                for j in range(d2.shape[1]):
+                    overlap[i,j] /= (np.linalg.norm(d1[:,i])**2 + np.linalg.norm(d2[:,j])**2 - np.inner(d1[:,i],d2[:,j]))
             a,b = linear_sum_assignment(overlap,maximize=True)
             nmi_feats = list(zip(a,b))
             
 
             nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
             nmi_feats = list(n[1] for n in nmi_feats)
-            mi,nmi = mutual_information(gmat,mmat[:,nmi_feats])
-            output['prod'] = {}
-            output['prod']['nmi'] = nmi
-            output['prod']['nmi matches'] = nmi_feats
-            output['prod']['mi'] = mi
-
+            mi,nmi = mutual_information(d1,d2[:,nmi_feats])
+            output['nmi'] = nmi
+            output['nmi matches'] = nmi_feats
+            output['mi'] = mi
+            print(f'NMI: {nmi}, MI: {mi}')
             if plots:
                 for j in range(len(nmi_feats)):
                     plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
