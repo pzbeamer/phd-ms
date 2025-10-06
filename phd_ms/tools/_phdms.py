@@ -98,9 +98,9 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
 
     dmat = filt_to_matrix(cluster_complex)
     diagram_0d,cocycles,_= union_find_dmat(dmat,edge_cut=1)
+    diagram_0d[0][2] = 1
     if num_domains == 0:
         num_domains = len(cocycles)
-    
     #Sort persistent homology results by death time
     diagram_0d,cocycles = zip(*sorted(zip(diagram_0d,cocycles),key=lambda x: x[0][2],reverse=True))
     #Filter out non-persistent results if desired.
@@ -111,15 +111,11 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     domains = []
 
     #Iterate through persistent components
-    for n in range(len(cocycles)+1):
-        if n == 0:
-            feature_list = [(set(cocycles[n]),1)]
-        elif n == len(cocycles):
-            break
-        else:
-            feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
+    for n in range(len(cocycles)):
+
+        feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
         #find all the clusters that belong to the multiscale domain
-        feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)
+        #feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)
         
                 
         x = spatial[:,0]
@@ -152,28 +148,35 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     
     #Default order is by death time
     #Ordered by size of domain if specified
-    if order == 'size':   
-        domains = sorted(domains,key = lambda x : sum(x)) 
-    elif order == 'persistence':
-        domains = domains
-
-    if len(domains) > num_domains:
-        domains = domains[:num_domains]
+    
 
     #Normalize the coreness values to be between 0 and 1
     for i in range(len(domains)):
         max = np.max(list(z for z in domains[i]))
         min = np.min(list(z for z in domains[i]))
         z  = list(1-(domains[i][j]-min)/(max-min) for j in range(len(domains[i])))
-         
         domains[i] = np.array(z)
-
+        
+    if order == 'size':   
+        domains = sorted(domains,key = lambda x : np.linalg.norm(np.array(x))) 
+    elif order == 'persistence':
+        domains = domains
+    elif order == 'size-persistence':
+        s = list(np.linalg.norm(np.array(domains[i]))*(diagram_0d[i][2]) for i in range(len(domains)))
+        domains = [x for _,x in sorted(zip(s, domains),key=lambda pair: pair[0])]
     if plots == 'on':
-        for d in domains:
+        for d in domains[:num_domains]:
             plot_multiscale(d,spatial)
+        mm = np.array(domains[:num_domains]).transpose()
+        dd = np.array(list(d[2] for d in diagram_0d))
+        mm =(mm @ dd)-1
+        plt.figure(figsize=(8, 20/3))
+        plt.scatter(spatial[:,0],spatial[:,1],c=mm,cmap='coolwarm',s=30,linewidths=.5)
+        cbar = plt.colorbar()
         plt.show()
 
-    return np.array(domains).transpose()
+
+    return np.array(domains[:num_domains]).transpose()
 
 
 #Currently broken
@@ -320,8 +323,8 @@ def plot_multiscale(multiscale,spatial,title='',marker=np.array([False])):
     x = spatial[:,0]
     y = spatial[:,1]
     z = multiscale.copy()
-    z[z < .00002] = .00002
-    z[z > 1-.00002] = 1-.00002
+    #Correction to approximate logit, we can't take logit of 0 or 1.
+    z = z*.99996+.00002
     
     plt.figure(figsize=(8, 20/3))
     plt.title(title)
