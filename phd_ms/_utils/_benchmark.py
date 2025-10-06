@@ -49,9 +49,6 @@ def mutual_information(mat1,mat2):
         for j in range(n2):
             d22 = d2[:,j]
             mi = 1/m*np.inner(d11,d22)*np.log(m*np.inner(d11,d22)/(np.sum(d11)*np.sum(d22))+1e-16)
-            if np.isnan(mi):
-                print(d11)
-                print(d22)
             mutual_info += mi
     nmi = mutual_info/(0.5*(entropy(d1)+entropy(d2)))
     return mutual_info,nmi
@@ -61,5 +58,5 @@ def entropy(d):
     n = d.shape[1]
     ent = 0
     for j in range(n):            
-        ent += 1/m*np.sum(d[:,j])*np.log(np.sum(d[:,j])+1e-16)
+        ent -= 1/m*np.sum(d[:,j])*np.log(1/m*np.sum(d[:,j])+1e-16)
     return ent

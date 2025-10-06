@@ -13,8 +13,8 @@ def leiden(adata,res=np.linspace(start=0.2,stop=1.2,num=6),show=True,scores=Fals
         adata,
         key_added=res_keys[i],
         resolution=res[i],
-        n_iterations=2,
-        directed=False,
+        n_iterations=5,
+        directed=True,
         )
         if show:
             sc.pl.umap(adata, color=res_keys[i])
