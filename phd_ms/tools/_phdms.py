@@ -3,14 +3,14 @@
 import numpy as np
 import scanpy as sc
 import gudhi as gd
-from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, clusters_to_distribution, mutual_information
+from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, clusters_to_distribution, nmi_metric, wasserstein_metric
 import matplotlib.pyplot as plt
 from scipy.special import logit
 import ot
 import pandas as pd
-from scipy.optimize import linear_sum_assignment
 import tracemalloc
 import time
+
 
 def preprocess_leiden(input_file,output_file='',emb='X_gst',
                       resolution=np.linspace(start=0.05,stop=.95,num=10),
@@ -115,7 +115,7 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
 
         feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
         #find all the clusters that belong to the multiscale domain
-        #feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)
+        feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)
         
                 
         x = spatial[:,0]
@@ -168,7 +168,7 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
         for d in domains[:num_domains]:
             plot_multiscale(d,spatial)
         mm = np.array(domains[:num_domains]).transpose()
-        dd = np.array(list(d[2] for d in diagram_0d))
+        dd = np.array(list(d[2] for d in diagram_0d[:num_domains]))
         mm =(mm @ dd)-1
         plt.figure(figsize=(8, 20/3))
         plt.scatter(spatial[:,0],spatial[:,1],c=mm,cmap='coolwarm',s=30,linewidths=.5)
@@ -220,63 +220,33 @@ def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='per
             return tracker
         
 
-def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1,metrics=['wasserstein','mi','nmi']):
+def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1,metrics=['wasserstein','nmi'],single_scale = False):
 
     ground_truth_distributions,gmat = clusters_to_distribution(ground_truth)
     multiscale_distributions,mmat = clusters_to_distribution(multiscale)
+    output = {}
     for metric in metrics:
-        output = {}
         if metric == 'wasserstein':
             dmat = ot.dist(spatial*conversion_factor,spatial*conversion_factor,metric='euclidean')
-            ma = np.max(dmat)
-            M = dmat/ma
-            optimal_costs = []
-            print('Wasserstein distance, index of optimal multiscale domain:')
-            for g in ground_truth_distributions:
-                g_cost = []
-                
-                for m in multiscale_distributions:
-            
-                    d = ot.emd2(g,m,M)
-                    g_cost.append(d)
-                
-                optimal_costs.append((min(g_cost)*ma,np.argmin(g_cost)))
-                print(f'{min(g_cost)*ma},{np.argmin(g_cost)}')
-            output['wasserstein costs'] = list(o[0] for o in optimal_costs)
-            output['wasserstein matches'] = list(o[1] for o in optimal_costs)
+            costs,matches = wasserstein_metric(ground_truth_distributions,multiscale_distributions,dmat)
             if plots:
-                for j in range(len(optimal_costs)):
+                for j in range(len(costs)):
                     plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
-                    plot_multiscale(mmat[:,optimal_costs[j][1]],spatial,title='Best match '+str(j))
+                    plot_multiscale(mmat[:,matches[j]],spatial,title='Best match '+str(j))
                 plt.show()
+            output['wasserstein costs'] = costs
+            output['wasserstein matches'] = matches
+
         elif metric == 'nmi':
-            mask1 = np.sum(gmat,axis=1,keepdims=True)
-            mask2 = np.sum(mmat,axis=1,keepdims=True)
-            d1 = gmat[np.all(mask1, axis=1) & np.all(mask2, axis=1),:]
-            d2 = mmat[np.all(mask1, axis=1) & np.all(mask2, axis=1),:]
-
-            overlap = d1.T @ d2
-            for i in range(d1.shape[1]):
-                for j in range(d2.shape[1]):
-                    overlap[i,j] /= (np.linalg.norm(d1[:,i])**2 + np.linalg.norm(d2[:,j])**2 - np.inner(d1[:,i],d2[:,j]))
-            a,b = linear_sum_assignment(overlap,maximize=True)
-            nmi_feats = list(zip(a,b))
-            
-
-            nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
-            nmi_feats = list(n[1] for n in nmi_feats)
-            mi,nmi = mutual_information(d1,d2[:,nmi_feats])
-            output['nmi'] = nmi
-            output['nmi matches'] = nmi_feats
-            output['mi'] = mi
+            mi,nmi,nmi_feats = nmi_metric(gmat,mmat,single_scale,200000)
             print(f'NMI: {nmi}, MI: {mi}')
             if plots:
                 for j in range(len(nmi_feats)):
-                    plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
                     plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='Best match'+str(j))
-                    
                 plt.show()
-
+            output['nmi'] = nmi
+            output['nmi matches'] = nmi_feats
+            output['mi'] = mi
     return output
 
 def construct_clustering(adata,domains):
