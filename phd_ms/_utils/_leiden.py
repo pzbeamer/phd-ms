@@ -4,7 +4,7 @@ from sklearn.metrics import adjusted_rand_score,adjusted_mutual_info_score
 
 def leiden(adata,res=np.linspace(start=0.2,stop=1.2,num=6),show=True,scores=False,embedding='X_gst',res_keys=[],ground_truth='cluster',neighbors=15):
     if not res_keys:
-        res_keys = ['leiden_'+str(r) for r in res]
+        res_keys = [f'leiden_{r:.3f}' for r in res]
     sc.pp.neighbors(adata,use_rep=embedding,n_neighbors=neighbors)
     
     sc.tl.umap(adata)

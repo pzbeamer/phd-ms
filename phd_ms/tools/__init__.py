@@ -6,3 +6,4 @@ from ._phdms import ground_truth_benchmark
 from ._phdms import plot_multiscale
 from ._phdms import construct_clustering
 from ._phdms import point_click_multiscale
+from ._phdms import plot_singlescale

@@ -7,16 +7,22 @@ from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, 
 import matplotlib.pyplot as plt
 from scipy.special import logit
 import ot
-import pandas as pd
 import tracemalloc
 import time
+import pandas as pd
 
 
 def preprocess_leiden(input_file,output_file='',emb='X_gst',
                       resolution=np.linspace(start=0.05,stop=.95,num=10),
                       res_keys=[],ground_truth='cluster',neighbors=15):
     
-    adata = sc.read_h5ad(input_file+'.h5ad')
+    adata_k = sc.read_h5ad(input_file+'.h5ad')
+    adata = adata_k.copy()
+    adata.obs = pd.DataFrame(index=adata.obs.index)
+    adata.obs[ground_truth] = adata_k.obs[ground_truth]
+    for key in list(adata.uns.keys()):
+        if 'leiden_' in key or 'clusters' in key:
+            del adata.uns[key]
     tracemalloc.start()
     start=time.perf_counter()
     leiden(adata,res=resolution,show=False,embedding=emb,res_keys=res_keys,ground_truth=ground_truth,scores=False,neighbors=neighbors)
@@ -94,7 +100,7 @@ def cluster_filtration(adata,res_keys,index='containment',order=[]):
         leiden_complex.assign_filtration([i],0)
     return leiden_complex,clusters
 
-def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plots="on",order='persistence',redundant_filter=False):
+def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plots="on",order='persistence',redundant_filter=False,save=False):
 
     dmat = filt_to_matrix(cluster_complex)
     diagram_0d,cocycles,_= union_find_dmat(dmat,edge_cut=1)
@@ -165,8 +171,8 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
         s = list(np.linalg.norm(np.array(domains[i]))*(diagram_0d[i][2]) for i in range(len(domains)))
         domains = [x for _,x in sorted(zip(s, domains),key=lambda pair: pair[0])]
     if plots == 'on':
-        for d in domains[:num_domains]:
-            plot_multiscale(d,spatial)
+        for i in range(len(domains[:num_domains])):
+            plot_multiscale(domains[i],spatial)
         mm = np.array(domains[:num_domains]).transpose()
         dd = np.array(list(d[2] for d in diagram_0d[:num_domains]))
         mm =(mm @ dd)-1
@@ -238,7 +244,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
             output['wasserstein matches'] = matches
 
         elif metric == 'nmi':
-            mi,nmi,nmi_feats = nmi_metric(gmat,mmat,single_scale,200000)
+            mi,nmi,nmi_feats = nmi_metric(gmat,mmat,single_scale,10000)
             print(f'NMI: {nmi}, MI: {mi}')
             if plots:
                 for j in range(len(nmi_feats)):
@@ -250,7 +256,7 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
     return output
 
 def construct_clustering(adata,domains):
-    category = np.zeros(adata.shape[0])
+    category = np.zeros(shape=(adata.shape[0],1))
     spatial = adata.obsm['spatial']
     #Identify cell spots by the domain they most belong to.
     for n in range(len(category)):
@@ -259,12 +265,12 @@ def construct_clustering(adata,domains):
         #Exclude cells which don't belong to any domain
         max_score = np.max(list(adata.obsm['multiscale'][n,domain] for domain in domains))
         if max_score > 0.05:
-            category[n] = str(arg_max+1)
+            category[n] = arg_max+1
         else:
-            category[n] = str(len(domains)+2)
-    
+            category[n] = len(domains)+2
+    print(category)
     # We want to get rid of unassigned spots
-    unassigned = list(n for n in range(len(category)) if category[n] == str(len(domains)+2))
+    unassigned = list(n for n in range(len(category)) if category[n] == len(domains)+2)
     new_spatial = spatial.copy()
     new_spatial[unassigned,0] = 10**10
     new_spatial[unassigned,1] = 10**10
@@ -289,21 +295,44 @@ def construct_clustering(adata,domains):
     #print(category)
     return pd.Categorical(category,categories=list(str(i) for i in range(1,len(domains)+1)))
 
-def plot_multiscale(multiscale,spatial,title='',marker=np.array([False])):
+def plot_multiscale(multiscale,spatial,title='',marker=np.array([False]),save=''):
     x = spatial[:,0]
     y = spatial[:,1]
     z = multiscale.copy()
     #Correction to approximate logit, we can't take logit of 0 or 1.
     z = z*.99996+.00002
     
-    plt.figure(figsize=(8, 20/3))
+    plt.figure(figsize=(3, 3))
     plt.title(title)
-    plt.scatter(x,y,c=logit(z),cmap='coolwarm',s=30,linewidths=.5)
+    plt.scatter(x,y,c=logit(z),cmap='coolwarm',s=7,linewidths=.1)
     if np.any(marker):
-        plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.5,marker='*')
+        plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.1,marker='*')
     cbar = plt.colorbar()
     cbar.ax.set_ylabel('logit(coreness)')
     frame1 = plt.gca()
-    frame1.axes.xaxis.set_ticklabels([])
-    frame1.axes.yaxis.set_ticklabels([])
+    frame1.axis('off')
+    if save != '':
+            plt.savefig(f'{save}.png',bbox_inches='tight')
 
+def plot_singlescale(adata,res_keys,spatial,title='',marker=np.array([False]),save=False):
+    import plotly
+    import itertools
+    for res in res_keys:
+        singlescale = adata.obs[res]
+        plt.figure(figsize=(3, 3))
+        if title=='res':
+            plt.title(f'k={res.replace('leiden_','')}')
+        elif title:
+            plt.title(title)
+        color_list = itertools.cycle(plotly.colors.qualitative.Plotly)
+        for cluster in singlescale.cat.categories.tolist():
+            cluster_spots = list(k for k in range(len(singlescale)) if cluster == singlescale.iloc[k])
+            x = spatial[cluster_spots,0]
+            y = spatial[cluster_spots,1]
+            plt.scatter(x,y,s=7,c=next(color_list),linewidths=.5)
+        if np.any(marker):
+            plt.scatter(marker[0],marker[1],c='r',s=7,edgecolors='k',linewidths=.1,marker='*')
+        frame1 = plt.gca()
+        frame1.axis('off')
+        if save:
+            plt.savefig(f'{save}{res.replace('leiden_','')}.png',bbox_inches='tight')
