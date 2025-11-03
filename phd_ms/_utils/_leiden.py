@@ -7,18 +7,14 @@ def leiden(adata,res=np.linspace(start=0.2,stop=1.2,num=6),show=True,scores=Fals
         res_keys = [f'leiden_{r:.3f}' for r in res]
     sc.pp.neighbors(adata,use_rep=embedding,n_neighbors=neighbors)
     
-    sc.tl.umap(adata)
     for i in range(len(res)):
         sc.tl.leiden(
         adata,
         key_added=res_keys[i],
         resolution=res[i],
         n_iterations=5,
-        directed=True,
+        directed=False,
         )
-        if show:
-            sc.pl.umap(adata, color=res_keys[i])
-            sc.pl.embedding(adata, basis="spatial", color=res_keys[i])
         if scores:
             print('Resolution, adjusted mutual info, adjusted rand:')
             print(cluster_metrics(adata.obs[res_keys[i]],truth=adata.obs[ground_truth]))

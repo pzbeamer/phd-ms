@@ -7,38 +7,58 @@ from .._utils import leiden, filt_to_matrix, union_find_dmat, get_sub_features, 
 import matplotlib.pyplot as plt
 from scipy.special import logit
 import ot
-import tracemalloc
-import time
 import pandas as pd
+from tqdm import tqdm
 
+'''
+Preprocess leiden clusterings for given dataset
 
-def preprocess_leiden(input_file,output_file='',emb='X_gst',
+Arguments: 
+input_file: path to the input file
+output_file: is the path where the output will be saved
+embedding: anndata field of the embedding to use
+resolutions: Resolution parameters
+keys = Keys to save clusters in adata.obs
+ground_truth: The ground truth field in adata.obs
+neighbors: number of neighbors for graph construction
+plots: whether to show plots
+reflect: whether to flip x/y coordinates for plotting
+
+Output: adata with clusters in adata.obs[keys[i]] for each resolution i
+'''
+def preprocess_leiden(input_file,output_file=None,emb='X_gst',plots=False,
                       resolution=np.linspace(start=0.05,stop=.95,num=10),
-                      res_keys=[],ground_truth='cluster',neighbors=15):
+                      res_keys=None,ground_truth='cluster',neighbors=15,reflect=[]):
     
-    adata_k = sc.read_h5ad(input_file+'.h5ad')
-    adata = adata_k.copy()
-    adata.obs = pd.DataFrame(index=adata.obs.index)
-    adata.obs[ground_truth] = adata_k.obs[ground_truth]
-    for key in list(adata.uns.keys()):
-        if 'leiden_' in key or 'clusters' in key:
-            del adata.uns[key]
-    tracemalloc.start()
-    start=time.perf_counter()
-    leiden(adata,res=resolution,show=False,embedding=emb,res_keys=res_keys,ground_truth=ground_truth,scores=False,neighbors=neighbors)
-    end=time.perf_counter()
-    adata.uns['leiden_compute'] = end-start
-    adata.uns['leiden_memory'] = tracemalloc.get_traced_memory()[1]
-    tracemalloc.stop()
-    adata.write_h5ad(output_file+'.h5ad')
+    if res_keys is None:
+        res_keys = [f'leiden_{r:.3f}' for r in resolution]
+    adata = sc.read_h5ad(input_file)
+    
+    leiden(adata,res=resolution,show=plots,embedding=emb,res_keys=res_keys,ground_truth=ground_truth,scores=False,neighbors=neighbors)
+    if not (output_file is None):
+        adata.write_h5ad(output_file)
+    
+    for xy in reflect:
+        if xy == 'x':
+            adata.obsm['spatial'][:,0] = -adata.obsm['spatial'][:,0]
+        elif xy == 'y':
+            adata.obsm['spatial'][:,1] = -adata.obsm['spatial'][:,1]
+    if plots:
+        plot_singlescale(adata,[ground_truth]+res_keys,adata.obsm['spatial'])
+    return adata
 
-def cluster_filtration(adata,res_keys,index='containment',order=[]):
+'''
+Build cluster filtration
 
-    num_cells = adata.obsm['spatial'].shape[0]
+Arguments: 
+adata: anndata object
+res_keys: keys in anndata where leiden clusters are stored
+index: Default 'containment', possible values {'jaccard','containment'}. 
+       Determines which cluster overlap metric is used to construct filtration.
 
-    #Reorder resolutions if order is given
-    if order:
-        res_keys = [res_keys[i] for i in reversed(order)]
+Output: adata with clusters in adata.obs[keys[i]] for each resolution i
+'''
+def cluster_filtration(adata,res_keys,index='containment'):
 
     #Create the filtration
     leiden_complex = gd.SimplexTree()
@@ -49,7 +69,8 @@ def cluster_filtration(adata,res_keys,index='containment',order=[]):
     clusters = []
 
     #We want to iterate through pairs of neighboring resolutions
-    for i in range(0,len(res_keys)-1):
+    print('Constructing filtration...')
+    for i in tqdm(range(0,len(res_keys)-1)):
         
         #Initialize the pair of resolutions we look at
         fine = adata.obs[res_keys[i]]
@@ -100,7 +121,23 @@ def cluster_filtration(adata,res_keys,index='containment',order=[]):
         leiden_complex.assign_filtration([i],0)
     return leiden_complex,clusters
 
-def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plots="on",order='persistence',redundant_filter=False,save=False):
+'''
+Generate and map multiscale domains
+
+Arguments:
+spatial: spatial coordinates of points
+cluster_complex: gudhi simplex tree of cluster filtration
+clusterings: list of clusters at each resolution, containing cell indices
+num_domains: number of multiscale domains to map, if 0 then all domains
+filt: filter out persistent clusters with persistence less than this value
+order: order of the output,'size', 'size-persistence', or default 'persistence'
+plots: 'on' to plot the domains
+
+Output:
+list of multiscale domains, consisting of coreness score for each point
+'''
+
+def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plots="on",order='persistence'):
 
     dmat = filt_to_matrix(cluster_complex)
     diagram_0d,cocycles,_= union_find_dmat(dmat,edge_cut=1)
@@ -119,18 +156,15 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     #Iterate through persistent components
     for n in range(len(cocycles)):
 
-        feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
         #find all the clusters that belong to the multiscale domain
-        feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)
-        
-                
-        x = spatial[:,0]
-        y = spatial[:,1]
-        coreness = 1.001*np.ones(len(x))
-        #Compute coreness score for each point in the tissue
-        #iterate backwards through features to find filtration value where point first appears in multiscale domain
+        feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
+        feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)        
         feature_list = sorted(feature_list,key= lambda x: x[1],reverse=True)
         tracker = set()
+
+        #Compute coreness score for each point in the tissue
+        #iterate backwards through features to find filtration value where point first appears in multiscale domain
+        coreness = 1.001*np.ones(len(spatial[:,1]))
         for i in range(len(feature_list)-1, -1, -1):
             
             spots = set()
@@ -140,29 +174,20 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
             coreness[list(spots-tracker)] = feature_list[i][1]
             tracker = set.union(tracker,spots)
 
-        nontrivial = True
-        #Filter out results which share too similar proportions to previously examined domains
-        if redundant_filter:
-            for guy in domains:
-                zz = set(i for i in range(len(coreness)) if guy[i] < 1)
-                gg = set(i for i in range(len(coreness)) if coreness[i] < 1)
-                if len(gg.intersection(zz)) > redundant_filter*len(gg.union(zz)):
-                    nontrivial = False
-                    break
-        if nontrivial:
-            domains.append(coreness) 
+        domains.append(coreness) 
     
-    #Default order is by death time
-    #Ordered by size of domain if specified
     
-
     #Normalize the coreness values to be between 0 and 1
     for i in range(len(domains)):
         max = np.max(list(z for z in domains[i]))
         min = np.min(list(z for z in domains[i]))
+        if max-min==0:
+            continue
         z  = list(1-(domains[i][j]-min)/(max-min) for j in range(len(domains[i])))
         domains[i] = np.array(z)
-        
+
+    #Default order is by death time
+    #Ordered by size of domain if specified    
     if order == 'size':   
         domains = sorted(domains,key = lambda x : np.linalg.norm(np.array(x))) 
     elif order == 'persistence':
@@ -170,19 +195,28 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     elif order == 'size-persistence':
         s = list(np.linalg.norm(np.array(domains[i]))*(diagram_0d[i][2]) for i in range(len(domains)))
         domains = [x for _,x in sorted(zip(s, domains),key=lambda pair: pair[0])]
+
+    domains = np.array(domains[:num_domains]).transpose()
     if plots == 'on':
-        for i in range(len(domains[:num_domains])):
-            plot_multiscale(domains[i],spatial)
-        mm = np.array(domains[:num_domains]).transpose()
+        for i in range(num_domains):
+            plot_multiscale(domains[:,i],spatial,title=f'{i}')
         dd = np.array(list(d[2] for d in diagram_0d[:num_domains]))
-        mm =(mm @ dd)-1
-        plt.figure(figsize=(8, 20/3))
-        plt.scatter(spatial[:,0],spatial[:,1],c=mm,cmap='coolwarm',s=30,linewidths=.5)
+        mm =(domains @ dd)-1
+        order = np.argsort(mm)
+        c = mm[order]
+        x = spatial[:,0][order]
+        y = spatial[:,1][order]
+        plt.figure()
+        plt.title('Heterogeneity scores')
+        plt.scatter(x,y,c=c,cmap='coolwarm',s=30,linewidths=.5)
         cbar = plt.colorbar()
+        cbar.ax.set_ylabel('heterogeneity')
+        frame1=plt.gca()
+        frame1.axis('off')
+        frame1.set_aspect('equal')
         plt.show()
 
-
-    return np.array(domains[:num_domains]).transpose()
+    return domains
 
 
 #Currently broken
@@ -225,8 +259,21 @@ def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='per
         if exit == 'E':
             return tracker
         
+'''
+Compute wasserstein distance and NMI between ground truth and multiscale domains
 
-def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1,metrics=['wasserstein','nmi'],single_scale = False):
+Arguments:
+ground truth: ground_truth clustering
+multiscale: matrix of coreness scores for each multiscale domain
+spatial: spatial coordinates
+plots: whether to plot matching ground truth and multiscale domains
+conversion_factor: a scaling factor to convert output to the desired units of distance
+metrics: which metrics to compute
+
+Output:
+output: dictionary of metrics and domains used to compute them
+'''
+def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversion_factor=1,metrics=['wasserstein','nmi']):
 
     ground_truth_distributions,gmat = clusters_to_distribution(ground_truth)
     multiscale_distributions,mmat = clusters_to_distribution(multiscale)
@@ -238,30 +285,30 @@ def ground_truth_benchmark(ground_truth,multiscale,spatial,plots=False,conversio
             if plots:
                 for j in range(len(costs)):
                     plot_multiscale(gmat[:,j],spatial,title='Ground truth domain '+str(j))
-                    plot_multiscale(mmat[:,matches[j]],spatial,title='Best match '+str(j))
+                    plot_multiscale(mmat[:,matches[j]],spatial,title='Best Wasserstein match '+str(j))
                 plt.show()
             output['wasserstein costs'] = costs
             output['wasserstein matches'] = matches
 
         elif metric == 'nmi':
-            mi,nmi,nmi_feats = nmi_metric(gmat,mmat,single_scale,10000)
+            mi,nmi,nmi_feats = nmi_metric(gmat,mmat,50000)
             print(f'NMI: {nmi}, MI: {mi}')
             if plots:
                 for j in range(len(nmi_feats)):
-                    plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='Best match'+str(j))
+                    plot_multiscale(mmat[:,nmi_feats[j]],spatial,title='NMI domain '+str(j))
                 plt.show()
             output['nmi'] = nmi
             output['nmi matches'] = nmi_feats
             output['mi'] = mi
     return output
 
-def construct_clustering(adata,domains):
+def construct_clustering(adata,domains,pers):
     category = np.zeros(shape=(adata.shape[0],1))
     spatial = adata.obsm['spatial']
     #Identify cell spots by the domain they most belong to.
     for n in range(len(category)):
         #Find the max scoring domain
-        arg_max = int(np.argmax(list(adata.obsm['multiscale'][n,domain] for domain in domains)))
+        arg_max = int(np.argmax(list((adata.obsm['multiscale'])[n,domain] for domain in domains)))
         #Exclude cells which don't belong to any domain
         max_score = np.max(list(adata.obsm['multiscale'][n,domain] for domain in domains))
         if max_score > 0.05:
@@ -296,32 +343,37 @@ def construct_clustering(adata,domains):
     return pd.Categorical(category,categories=list(str(i) for i in range(1,len(domains)+1)))
 
 def plot_multiscale(multiscale,spatial,title='',marker=np.array([False]),save=''):
-    x = spatial[:,0]
-    y = spatial[:,1]
-    z = multiscale.copy()
-    #Correction to approximate logit, we can't take logit of 0 or 1.
-    z = z*.99996+.00002
+
     
-    plt.figure(figsize=(3, 3))
+    c = multiscale.copy()
+    #Correction to approximate logit, we can't take logit of 0 or 1.
+    c = c*.99996+.00002
+    order = np.argsort(c)
+    c = c[order]
+    x = spatial[:,0][order]
+    y = spatial[:,1][order]
+    
+    plt.figure()
     plt.title(title)
-    plt.scatter(x,y,c=logit(z),cmap='coolwarm',s=7,linewidths=.1)
+    plt.scatter(x,y,c=logit(c),cmap='coolwarm',s=25,linewidths=.1)
     if np.any(marker):
         plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.1,marker='*')
     cbar = plt.colorbar()
     cbar.ax.set_ylabel('logit(coreness)')
     frame1 = plt.gca()
     frame1.axis('off')
+    frame1.set_aspect('equal')
     if save != '':
             plt.savefig(f'{save}.png',bbox_inches='tight')
 
-def plot_singlescale(adata,res_keys,spatial,title='',marker=np.array([False]),save=False):
+def plot_singlescale(adata,res_keys,spatial,title='res',marker=np.array([False]),save=False):
     import plotly
     import itertools
     for res in res_keys:
         singlescale = adata.obs[res]
         plt.figure(figsize=(3, 3))
         if title=='res':
-            plt.title(f'k={res.replace('leiden_','')}')
+            plt.title(f'{res}')
         elif title:
             plt.title(title)
         color_list = itertools.cycle(plotly.colors.qualitative.Plotly)

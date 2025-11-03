@@ -134,8 +134,8 @@ def get_sub_features(cocycles,diagram_0d,feature,feature_list):
     
     t,j = next(((set(cocycles[j]),j) for j in range(len(cocycles)) if set(cocycles[j])<feature),([],[])) 
     if t != []:
-        feature_list.append((feature-t,diagram_0d[j][2]))
-            #feature_list.append((t,diagram_0d[j][2]))
+        #feature_list.append((feature-t,diagram_0d[j][2]))
+        feature_list.append((t,diagram_0d[j][2]))
             #cocycles.remove(cocycles[j])
         feature_list = get_sub_features(cocycles,diagram_0d,feature-t,feature_list)
     return feature_list

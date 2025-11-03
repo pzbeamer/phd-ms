@@ -79,7 +79,7 @@ def wasserstein_metric(ground_truth_distributions,multiscale_distributions,dmat)
     matches = list(np.argmin(g_cost[i1,:]) for i1 in range(g_cost.shape[0]))
     return costs,matches
 
-def nmi_metric(gmat,mmat,single_scale,its):
+def nmi_metric(gmat,mmat,its):
     mask1 = np.sum(gmat,axis=1,keepdims=True)
     mask2 = np.sum(mmat,axis=1,keepdims=True)
     
@@ -91,58 +91,58 @@ def nmi_metric(gmat,mmat,single_scale,its):
     d1 = d1[:,np.all(mask3, axis=0)]
     d2 = d2[:,np.all(mask4, axis=0)]
 
-    if not single_scale:
+
         
-        overlap = d1.T @ d2
-        for i in range(d1.shape[1]):
-            for j in range(d2.shape[1]):
-                overlap[i,j] /= (np.linalg.norm(d1[:,i])**2 + np.linalg.norm(d2[:,j])**2 - np.inner(d1[:,i],d2[:,j]))
-                #overlap[i,j] = 1/d1.shape[0]*np.inner(d1[:,i],d2[:,j])*np.log(d1.shape[0]*np.inner(d1[:,i],d2[:,j])/(np.sum(d1[:,i])*np.sum(d2[:,j]))+1e-16)
+    overlap = d1.T @ d2
+    for i in range(d1.shape[1]):
+        for j in range(d2.shape[1]):
+            overlap[i,j] /= (np.linalg.norm(d1[:,i])**2 + np.linalg.norm(d2[:,j])**2 - np.inner(d1[:,i],d2[:,j])+1e-16)
+            #overlap[i,j] = 1/d1.shape[0]*np.inner(d1[:,i],d2[:,j])*np.log(d1.shape[0]*np.inner(d1[:,i],d2[:,j])/(np.sum(d1[:,i])*np.sum(d2[:,j]))+1e-16)
 
-        a,b = linear_sum_assignment(overlap,maximize=True)
-        nmi_feats = list(zip(a,b))
-        nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
-        nmi_feats = list(n[1] for n in nmi_feats)
-        coverage0 = (1-np.sum(np.all(d2[:,nmi_feats]==0,axis=1))/d2.shape[0])
+    a,b = linear_sum_assignment(overlap,maximize=True)
+    nmi_feats = list(zip(a,b))
+    nmi_feats = sorted(nmi_feats,key=lambda x: x[0])
+    nmi_feats = list(n[1] for n in nmi_feats)
+    coverage0 = (1-np.sum(np.all(d2[:,nmi_feats]==0,axis=1))/d2.shape[0])
+    _,nmi = mutual_information(d1,d2[:,nmi_feats])
+    best = [(nmi,nmi_feats,coverage0)]
+    min_norm = np.min(np.linalg.norm(d2, axis=0))
+    ms_domains = set(range(d2.shape[1]))
+    print('optimizing normalized mutual information...')
+    for i in trange(its):
+
+        n = np.random.choice([0,1,2,3])
+        if i%1000 < 500:
+            if i%1000 == 0:
+                best.append(best[np.random.choice(list(range(len(best))))])
+            nmi_feats= list(np.random.choice(list(ms_domains),size=min([len(ms_domains),d1.shape[1]+n]),replace=False))        
+        else:
+            m = np.random.choice([0,1,2,3])
+            if 3 >= len(best[-1][1]):
+                m = np.random.choice(list(range(len(best[-1][1]))))
+            nmi_feats = list(np.random.choice(best[-1][1],size=len(best[-1][1])-m,replace=False))    
+            nmi_feats.extend(np.random.choice(list(ms_domains-set(nmi_feats)),size=min([len(ms_domains-set(nmi_feats)),m+n]),replace=False))
+
+        a,b = linear_sum_assignment(overlap[:,nmi_feats],maximize=True)
+        dummy = list(n[1] for n in sorted(list(zip(a,b)),key=lambda x: x[0]))
+        nmi_feats = dummy + list(set(nmi_feats)-set(dummy))
+
+        matches = d2[:,nmi_feats]
+        for j in range(1,matches.shape[1]):
+            matches[:,j] = matches[:,j] - np.sum(d2[:,nmi_feats[:j]],axis=1,keepdims=True).transpose()
+        matches[matches<0] = 0
+        remove_duds = np.linalg.norm(matches,axis=0) >= min_norm
+        nmi_feats = list(nmi_feats[j] for j in range(len(nmi_feats)) if remove_duds[j]==True)
+        matches = matches[:,remove_duds]
+        
+        coverage = (1-np.sum(np.all(d2[:,nmi_feats]==0,axis=1))/d2.shape[0])
         _,nmi = mutual_information(d1,d2[:,nmi_feats])
-        best = [(nmi,nmi_feats,coverage0)]
-        min_norm = np.min(np.linalg.norm(d2, axis=0))
-        ms_domains = set(range(d2.shape[1]))
-        print('optimizing normalized mutual information...')
-        for i in trange(its):
+        
+        if nmi > best[-1][0]:
+            best[-1] = (nmi,nmi_feats,coverage)
+    b = max(best,key=lambda x: x[0])
+    nmi_feats = b[1]
 
-            n = np.random.choice([0,1,2,3])
-            if i%1000 < 500:
-                if i%1000 == 0:
-                    best.append(best[np.random.choice(list(range(len(best))))])
-                nmi_feats= list(np.random.choice(list(ms_domains),size=min([len(ms_domains),d1.shape[1]+n]),replace=False))        
-            else:
-                m = np.random.choice([0,1,2,3])
-                nmi_feats = list(np.random.choice(best[-1][1],size=len(best[-1][1])-m,replace=False))    
-                nmi_feats.extend(np.random.choice(list(ms_domains-set(nmi_feats)),size=min([len(ms_domains-set(nmi_feats)),m+n]),replace=False))
-
-            a,b = linear_sum_assignment(overlap[:,nmi_feats],maximize=True)
-            dummy = list(n[1] for n in sorted(list(zip(a,b)),key=lambda x: x[0]))
-            nmi_feats = dummy + list(set(nmi_feats)-set(dummy))
-
-            matches = d2[:,nmi_feats]
-            for j in range(1,matches.shape[1]):
-                matches[:,j] = matches[:,j] - np.sum(d2[:,nmi_feats[:j]],axis=1,keepdims=True).transpose()
-            matches[matches<0] = 0
-            remove_duds = np.linalg.norm(matches,axis=0) > min_norm
-            nmi_feats = list(nmi_feats[j] for j in range(len(nmi_feats)) if remove_duds[j]==True)
-            matches = matches[:,remove_duds]
-           
-            coverage = (1-np.sum(np.all(d2[:,nmi_feats]==0,axis=1))/d2.shape[0])
-            _,nmi = mutual_information(d1,d2[:,nmi_feats])
-            
-            if nmi > best[-1][0]:
-                best[-1] = (nmi,nmi_feats,coverage)
-        b = max(best,key=lambda x: x[0])
-        nmi_feats = b[1]
-
-    else:
-        nmi_feats = list(range(d2.shape[1]))
     mi,nmi = mutual_information(d1,d2[:,nmi_feats])
     return mi,nmi,nmi_feats
 
