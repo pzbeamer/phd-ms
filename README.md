@@ -31,7 +31,7 @@ import scanpy
 ```
 Preprocessing steps here (note that we assume a spatially-aware embedding has already been computed for your data):
 ```python
-INPUT_FILE= '/home/pbeamer/Documents/graphst/adata_151673
+INPUT_FILE= '/home/pbeamer/Documents/graphst/adata_151673.h5ad'
 phd_ms.tl.preprocess_leiden(INPUT_FILE,output_file=INPUT_FILE)
 ```
 Compute persistent homology and plot 10 most prominent multiscale domains:
