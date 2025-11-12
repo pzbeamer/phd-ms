@@ -220,10 +220,10 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
 
 
 #Currently broken
-def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='persistence'):
+def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='persistence',redundant_filter=True):
     from mpl_point_clicker import clicker
 
-    domains = map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=filt,plots='off',order=order)
+    domains = map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=filt,plots='off',order=order,redundant_filter=redundant_filter)
     tracker = []
     exit = False
     while not exit:
@@ -231,11 +231,11 @@ def point_click_multiscale(spatial,cluster_complex,clusterings,filt=0,order='per
         plt.figure(figsize=[15,15])
         plt.rcParams.update({'font.size': 25})
         ax = plt.gca()
-        ax.scatter(spatial[:,0],spatial[:,1],c='k',s=100)
+        ax.scatter(spatial[:,0],spatial[:,1],c='k')
         ax.set_title('Click once to specify spot. Close to visualize domains')
         ax.axes.xaxis.set_ticklabels([])
         ax.axes.yaxis.set_ticklabels([])
-        klicker = clicker(ax, ["spot"], markers=["*"],markersize=30,colors=['red'])
+        klicker = clicker(ax, ["spot"], markers=["*"],markersize=20,colors=['red'])
 
 
         plt.tight_layout()
@@ -356,11 +356,10 @@ def plot_multiscale(multiscale,spatial,title='',marker=np.array([False]),save=''
     plt.figure()
     plt.title(title)
     plt.scatter(x,y,c=logit(c),cmap='coolwarm',s=25,linewidths=.1)
+    if np.any(marker):
+        plt.scatter(marker[0],marker[1],c='r',s=40,edgecolors='k',linewidths=.1,marker='*')
     cbar = plt.colorbar()
     cbar.ax.set_ylabel('logit(coreness)')
-    if np.any(marker):
-        plt.scatter(marker[0],marker[1],c='k',s=60,edgecolors='k',linewidths=.1,marker='*')
-    
     frame1 = plt.gca()
     frame1.axis('off')
     frame1.set_aspect('equal')
@@ -384,7 +383,7 @@ def plot_singlescale(adata,res_keys,spatial,title='res',marker=np.array([False])
             y = spatial[cluster_spots,1]
             plt.scatter(x,y,s=7,c=next(color_list),linewidths=.5)
         if np.any(marker):
-            plt.scatter(marker[0],marker[1],c='k',s=15,edgecolors='k',linewidths=.1,marker='*')
+            plt.scatter(marker[0],marker[1],c='r',s=7,edgecolors='k',linewidths=.1,marker='*')
         frame1 = plt.gca()
         frame1.axis('off')
         if save:

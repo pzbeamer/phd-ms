@@ -1,3 +1,4 @@
+
 import phd_ms
 import scanpy as sc
 import matplotlib.pyplot as plt
@@ -8,8 +9,7 @@ import numpy as np
 
 ## Necessary parameters
 #Change this line to the file with input data
-#Omit .h5ad extension!
-DATA = '/home/pbeamer/Documents/graphst/visium_hne_graphst'
+DATA = '/home/pbeamer/Documents/h5ad/graphst/visium_hne_graphst.h5ad'
 
 
 ## Optional parameters (don't change these unless you know what you're doing.)
@@ -26,10 +26,9 @@ INDEX = 'containment'
 
 def main(DATA,EMBEDDING,RESOLUTIONS,RES_KEYS):
 
-    phd_ms.tl.preprocess_leiden(DATA,output_file=DATA,emb=EMBEDDING,resolution=RESOLUTIONS,res_keys=RES_KEYS,ground_truth=None)
-    adata = sc.read_h5ad(DATA+'.h5ad')
+    adata = phd_ms.tl.preprocess_leiden(DATA,output_file=DATA,emb=EMBEDDING,resolution=RESOLUTIONS,res_keys=RES_KEYS,ground_truth=None)
     print('Preprocessing complete. (1/3)')
-    cluster_complex,clusterings= phd_ms.tl.cluster_filtration(adata,res_keys=RES_KEYS,index='containment',order=range(len(RES_KEYS)))
+    cluster_complex,clusterings= phd_ms.tl.cluster_filtration(adata,res_keys=RES_KEYS,index='containment')
     print('Preparing to plot. (2/3)')
     phd_ms.tl.point_click_multiscale(adata.obsm['spatial'],cluster_complex,clusterings)
     print('Done. (3/3)')
