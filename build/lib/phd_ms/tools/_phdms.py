@@ -44,10 +44,7 @@ def preprocess_leiden(input_file,output_file=None,emb='X_gst',plots=False,
         elif xy == 'y':
             adata.obsm['spatial'][:,1] = -adata.obsm['spatial'][:,1]
     if plots:
-        if ground_truth is not None:
-            plot_singlescale(adata,[ground_truth]+res_keys,adata.obsm['spatial'])
-        else:  
-            plot_singlescale(adata,res_keys,adata.obsm['spatial'])
+        plot_singlescale(adata,[ground_truth]+res_keys,adata.obsm['spatial'])
     return adata
 
 '''
@@ -62,7 +59,7 @@ index: Default 'containment', possible values {'jaccard','containment'}.
 Output: adata with clusters in adata.obs[keys[i]] for each resolution i
 '''
 def cluster_filtration(adata,res_keys,index='containment'):
-    
+
     #Create the filtration
     leiden_complex = gd.SimplexTree()
     
@@ -70,10 +67,10 @@ def cluster_filtration(adata,res_keys,index='containment'):
     num_clusters = []
     #List of sets of indices for each cluster at each resolution
     clusters = []
-    res_keys.reverse()
+
     #We want to iterate through pairs of neighboring resolutions
     print('Constructing filtration...')
-    for i in tqdm(range(len(res_keys)-1)):
+    for i in tqdm(range(0,len(res_keys)-1)):
         
         #Initialize the pair of resolutions we look at
         fine = adata.obs[res_keys[i]]
@@ -163,18 +160,20 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
         feature_list = [(set(cocycles[n]),diagram_0d[n][2])]
         feature_list = get_sub_features(cocycles,diagram_0d,feature_list[0][0],feature_list)        
         feature_list = sorted(feature_list,key= lambda x: x[1],reverse=True)
-        
+        tracker = set()
 
         #Compute coreness score for each point in the tissue
         #iterate backwards through features to find filtration value where point first appears in multiscale domain
-        tracker = set()
         coreness = 1.001*np.ones(len(spatial[:,1]))
-        for i in reversed(range(len(feature_list))):
+        for i in range(len(feature_list)-1, -1, -1):
+            
             spots = set()
             for clust in feature_list[i][0]:
                 spots = set.union(spots,clusterings[clust])
+            
             coreness[list(spots-tracker)] = feature_list[i][1]
             tracker = set.union(tracker,spots)
+
         domains.append(coreness) 
     
     
@@ -190,12 +189,12 @@ def map_multiscale(spatial,cluster_complex,clusterings,num_domains=0,filt=0,plot
     #Default order is by death time
     #Ordered by size of domain if specified    
     if order == 'size':   
-        domains = sorted(domains,key = lambda x : np.linalg.norm(np.array(x)),reverse=True) 
+        domains = sorted(domains,key = lambda x : np.linalg.norm(np.array(x))) 
     elif order == 'persistence':
         domains = domains
     elif order == 'size-persistence':
         s = list(np.linalg.norm(np.array(domains[i]))*(diagram_0d[i][2]) for i in range(len(domains)))
-        domains = [x for _,x in sorted(zip(s, domains),key=lambda pair: pair[0],reverse=True)]
+        domains = [x for _,x in sorted(zip(s, domains),key=lambda pair: pair[0])]
 
     domains = np.array(domains[:num_domains]).transpose()
     if plots == 'on':
